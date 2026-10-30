@@ -50,12 +50,13 @@ test("course inventory includes every named example and practice actually presen
 test("course progress never treats generic tests as exercise completion", () => {
   assert.equal(
     data.items.filter((r) => r.status === "اجتاز الاختبارات").length,
-    1,
+    4,
   );
-  assert.equal(data.items.find(r=>r.status === "اجتاز الاختبارات")?.id, "S-01");
+  assert.deepEqual(data.items.filter(r=>r.status === "اجتاز الاختبارات").map(r=>r.id).sort(), ["C2-EX-02","C2-EX-05","C2-EX-08","S-01"]);
   for (const row of data.items) {
     assert.ok(progressStatuses.includes(row.status));
     if (row.id === "S-01") assert.match(row.tests, /exercise1.test.ts.*Chromium PASS/);
+    else if (["C2-EX-02","C2-EX-05","C2-EX-08"].includes(row.id)) assert.match(row.tests,/studentCourse.test.ts.*Chromium PASS/);
     else assert.match(row.tests, /لم يُنفذ/);
     assert.ok(row.gap.length > 10);
     assert.ok(row.source === "Chapter 1.pdf" || row.source === "Series 1.pdf");

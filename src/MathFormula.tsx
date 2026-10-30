@@ -1,3 +1,4 @@
+import { blackboardTex } from "./blackboard";
 import { useMemo, useRef, useEffect, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -13,13 +14,13 @@ export function MathFormula({
   active?: string[];
   onSymbol?: (link: SymbolLink) => void;
 }) {
-  const [copyLabel, setCopyLabel] = useState("نسخ LaTeX");
-  useEffect(() => setCopyLabel("نسخ LaTeX"), [tex]);
+  const [copyLabel, setCopyLabel] = useState("نسخ المعادلة");
+  useEffect(() => setCopyLabel("نسخ المعادلة"), [tex]);
   const root = useRef<HTMLDivElement>(null);
   const [html, error] = useMemo(() => {
     try {
       return [
-        katex.renderToString(tex, {
+        katex.renderToString(blackboardTex(tex), {
           displayMode: true,
           throwOnError: true,
           output: "htmlAndMathml",

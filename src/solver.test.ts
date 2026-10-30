@@ -350,3 +350,5 @@ import "./unified.test.ts";
 import "./courseProgress.test.ts";
 
 import "./exercise1.test.ts";
+
+import "./studentCourse.test.ts";

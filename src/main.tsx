@@ -1,3 +1,4 @@
+import { StudentLessons } from "./StudentLessons";
 import { terminalPosition, wirePath } from "./connectivity";
 import { ExerciseOne, ConnectionDiagnostics } from "./ExerciseOne";
 import React, { useState, useRef, useEffect, useMemo } from "react";
@@ -54,7 +55,9 @@ const icons: Record<Kind, string> = {
 };
 function App() {
   const readPage = () =>
-    window.location.hash === "#progress"
+    window.location.hash === "#lessons"
+      ? "lessons"
+      : window.location.hash === "#progress"
       ? "progress"
       : window.location.hash === "#about"
         ? "about"
@@ -65,7 +68,7 @@ function App() {
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
-  const goPage = (next: "lab" | "progress" | "about") => {
+  const goPage = (next: "lab" | "progress" | "about" | "lessons") => {
     window.location.hash = next;
     setPage(next);
   };
@@ -268,13 +271,9 @@ function App() {
         <nav>
           <span className="active">المختبر الموحد</span>
           <button
-            onClick={() =>
-              document
-                .getElementById("lessons")
-                ?.scrollIntoView({ behavior: "smooth" })
-            }
+            onClick={() => goPage("lessons")}
           >
-            التجارب التعليمية
+            الدروس والتجارب
           </button>
         </nav>
         <div className="header-end">
@@ -292,11 +291,12 @@ function App() {
         >
           المختبر
         </button>
+        <button className={page === "lessons" ? "active" : ""} onClick={() => goPage("lessons")}>الدروس والتجارب</button>
         <button
           className={page === "progress" ? "active" : ""}
           onClick={() => goPage("progress")}
         >
-          تقدم تطوير المختبر
+          حالة تطوير المختبر · للمطور
         </button>
         <button
           className={page === "about" ? "active" : ""}
@@ -308,8 +308,7 @@ function App() {
       <main>
         <div hidden={page !== "lab"}>
           <p className="course-notice">
-            تدقيق المقرر قيد المراجعة: التجارب القديمة أدناه أمثلة عامة، وليست
-            تمارين PDF معتمدة. راجع صفحة التقدم للحالات الفعلية.
+            ابدأ من «الدروس والتجارب» لقراءة الفكرة ومتابعة مثال من محاضراتك، أو ارسم دارتك هنا واستكشف الحل خطوة بخطوة.
           </p>
           <div className="intro">
             <div>
@@ -1052,6 +1051,7 @@ function App() {
                 currentHighlight={highlight}
               />
             ))}
+          <details className="optional-experiments"><summary>تجارب إضافية خارج أمثلة المقرر · DC وRC</summary><p>وظائف إضافية محفوظة للتجريب الحر؛ لا تمثل تمارين جديدة من ملفات الدروس.</p>
           <section id="lessons" className="lessons">
             <div className="section-heading">
               <div>
@@ -1122,6 +1122,7 @@ function App() {
               تحميل تجربة يستبدل الدارة الحالية؛ احفظ عملك أولًا.
             </p>
           </section>
+          </details>
           <div className="legacy-saves">
             <span>استرجاع حفظ سابق:</span>
             {[
@@ -1141,6 +1142,7 @@ function App() {
             ))}
           </div>
         </div>
+        {page === "lessons" && <StudentLessons openLab={(v)=>{loadRC(v);select(v.parts.find(p=>p.kind==='resistor')?.id??'');goPage('lab');}} />}
         {page === "progress" && <CourseProgressPage />}
         {page === "about" && <AboutPage />}
         <CreatorFooter />
