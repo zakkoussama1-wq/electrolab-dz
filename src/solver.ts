@@ -8,12 +8,15 @@ export type Part = {
   rotation: number;
   value: number;
   closed: boolean;
+  voltageRef?: 1 | -1;
+  currentRef?: 1 | -1;
 };
 export type Wire = { id: string; a: string; b: string };
 export type Circuit = { parts: Part[]; wires: Wire[] };
 export type Result = {
   error?: string;
   warning?: string;
+  terminalVoltages?: Record<string, number>;
   values: Record<string, { voltage: number; current: number; power: number }>;
 };
 export const terminal = (id: string, n: number) => `${id}:${n}`;
@@ -38,6 +41,9 @@ export function solve(c: Circuit): Result {
       return fail("سلك متصل بطرف غير موجود. احذف السلك وأعد توصيله.");
     join(w.a, w.b);
   }
+  // Validate ideal short paths separately; keep switches as MNA branches so
+  // their currents are solved rather than silently reported as zero.
+  const shortParent = new Map(parent);
   c.parts
     .filter((p) => p.kind === "switch" && p.closed)
     .forEach((p) => join(terminal(p.id, 0), terminal(p.id, 1)));
@@ -46,6 +52,8 @@ export function solve(c: Circuit): Result {
       return fail(
         "قصر كهربائي على البطارية! يوجد مسار أسلاك أو مفاتيح مغلقة بين قطبيها. أزل المسار وأضف مقاومة على التوالي.",
       );
+  parent.clear();
+  shortParent.forEach((v, k) => parent.set(k, v));
   // Modified nodal analysis, each connected island has its own reference node.
   const nodes = [...new Set([...parent.keys()].map(root))];
   const graph = new Map(nodes.map((n) => [n, new Set<string>()]));
@@ -77,7 +85,9 @@ export function solve(c: Circuit): Result {
     }
   const unknown = nodes.filter((n) => !refs.has(n));
   const idx = new Map(unknown.map((n, i) => [n, i]));
-  const sources = c.parts.filter((p) => p.kind === "battery");
+  const sources = c.parts.filter(
+    (p) => p.kind === "battery" || (p.kind === "switch" && p.closed),
+  );
   const size = unknown.length + sources.length;
   const A = Array.from({ length: size }, () => Array(size + 1).fill(0));
   const add = (i: number | undefined, j: number | undefined, v: number) => {
@@ -86,13 +96,13 @@ export function solve(c: Circuit): Result {
   for (const p of active) {
     const a = idx.get(root(terminal(p.id, 0))),
       b = idx.get(root(terminal(p.id, 1)));
-    if (p.kind === "battery") {
+    if (sources.includes(p)) {
       const k = unknown.length + sources.indexOf(p);
       add(a, k, 1);
       add(b, k, -1);
       add(k, a, 1);
       add(k, b, -1);
-      A[k][size] = p.value;
+      A[k][size] = p.kind === "battery" ? p.value : 0;
     } else if (p.kind !== "switch") {
       const g = 1 / (p.kind === "ammeter" ? 0.001 : p.value);
       add(a, a, g);
@@ -107,7 +117,7 @@ export function solve(c: Circuit): Result {
       if (Math.abs(A[i][k]) > Math.abs(A[pivot][k])) pivot = i;
     if (Math.abs(A[pivot][k]) < 1e-12)
       return fail(
-        "مصادر جهد متعارضة أو زائدة. تجنّب توصيل البطاريات مباشرة على التوازي، وراجع قطبيتها.",
+        "نظام غير قابل للحل بشكل فريد: مصادر متعارضة أو فروع مثالية زائدة (بطاريات أو مفاتيح مغلقة في حلقة مثالية). راجع التوصيلات.",
       );
     [A[k], A[pivot]] = [A[pivot], A[k]];
     const d = A[k][k];
@@ -129,23 +139,36 @@ export function solve(c: Circuit): Result {
       b = terminal(p.id, 1);
     let v = voltage(a) - voltage(b);
     let current = 0;
-    if (p.kind === "battery")
+    if (sources.includes(p))
       current = A[unknown.length + sources.indexOf(p)][size];
     else if (p.kind === "resistor" || p.kind === "lamp" || p.kind === "ammeter")
       current = v / (p.kind === "ammeter" ? 0.001 : p.value);
-    if (p.kind === "voltmeter" && island.get(root(a)) !== island.get(root(b))) {
+    if (island.get(root(a)) !== island.get(root(b))) {
       floatingMeter = true;
       v = NaN;
     }
     if (Math.abs(current) > 1e-9) flowing = true;
-    values[p.id] = { voltage: v, current, power: v * current };
+    values[p.id] = {
+      voltage: v,
+      current,
+      power: current === 0 ? 0 : v * current,
+    };
   }
+  if (
+    Object.values(values).some(
+      (v) => !Number.isFinite(v.current) || !Number.isFinite(v.power),
+    )
+  )
+    return fail("تعذر الحصول على حل عددي مستقر. راجع القيم والتوصيلات.");
   return {
     values,
+    terminalVoltages: Object.fromEntries(
+      [...parent.keys()].map((t) => [t, voltage(t)]),
+    ),
     warning: floatingMeter
-      ? "جهاز قياس بين جزيرتين منفصلتين: القراءة غير معرّفة. أوصل طرفيه عبر عنصر ضمن الدارة نفسها."
+      ? "جهد فرع بين جزيرتين منفصلتين غير معرّف. أوصل طرفيه ضمن الدارة نفسها إذا أردت قياس فرق الجهد."
       : !flowing
-        ? "دارة مفتوحة: لا يمر تيار. أغلق المفتاح وتأكد من وجود مسار رجوع إلى البطارية."
+        ? "لا يمر تيار: قد يكون المسار مفتوحًا أو فرق الجهد عبر الحمل صفرًا. افحص المفتاح ومسار الرجوع وقيم المصادر."
         : undefined,
   };
 }

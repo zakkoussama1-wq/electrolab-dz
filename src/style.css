@@ -917,3 +917,245 @@ footer span span {
     font-size: 11px;
   }
 }
+/* Engineering references and teaching panels retain the laboratory palette. */
+.circuit-glyph {
+  stroke: var(--text);
+  fill: none;
+  stroke-width: 2;
+}
+.circuit-glyph text {
+  stroke: none;
+  fill: var(--text);
+  font: 17px Arial;
+}
+.circuit-glyph.lit {
+  stroke: #ffdc6b;
+  filter: drop-shadow(0 0 5px #ffdc6b80);
+}
+.reference-current {
+  stroke: #70beee;
+  fill: #70beee;
+  cursor: pointer;
+  stroke-width: 1.5;
+}
+.reference-current text {
+  stroke: none;
+  font: 11px monospace;
+}
+.reference-pole {
+  fill: #e7bc77;
+  font: 17px monospace;
+  cursor: pointer;
+}
+.current-particle {
+  fill: #55e3ba;
+  pointer-events: none;
+}
+.component.highlighted {
+  stroke: #cb9bff;
+  stroke-width: 3;
+}
+.terminal circle.highlight-terminal {
+  fill: #cb9bff;
+  stroke: #eee;
+}
+.wire path.highlight-wire {
+  stroke: #cb9bff;
+  stroke-width: 3;
+}
+.reference-controls {
+  margin: 14px 0;
+}
+.reference-controls button {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  padding: 8px;
+  margin-top: 7px;
+  font-size: 10px;
+  color: #88c8f2;
+}
+.reference-controls p {
+  font-size: 10px;
+  color: var(--muted);
+}
+.education {
+  margin-top: 30px;
+}
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.analysis-card,
+.all-readings,
+.teaching {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 18px;
+}
+.analysis-card h3,
+.all-readings h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.analysis-card p,
+.topology-note,
+.scope-note,
+.teaching > p {
+  font-size: 11px;
+  color: var(--muted);
+}
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.chips button {
+  padding: 5px 9px;
+  font-size: 10px;
+  border: 1px solid var(--line);
+  color: #bb9eea;
+}
+.all-readings {
+  margin: 17px 0;
+}
+.table-scroll {
+  overflow: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+  white-space: nowrap;
+}
+th,
+td {
+  padding: 10px 12px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+}
+th {
+  color: var(--muted);
+}
+td:nth-child(2),
+td:nth-child(3) {
+  color: #86c9f3;
+  font-family: monospace;
+  direction: ltr;
+  text-align: right;
+}
+.active-reading {
+  background: #41dfb50b;
+}
+.teaching h2 {
+  font-size: 19px;
+  margin-top: 0;
+}
+.teaching-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+  font-size: 12px;
+}
+.teaching-controls label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+select {
+  font: inherit;
+  background: var(--canvas);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  max-width: 100%;
+}
+.step {
+  padding: 18px;
+  background: var(--canvas);
+  border-radius: 8px;
+  border-right: 3px solid var(--accent);
+}
+.step h3 {
+  font-size: 15px;
+  margin-top: 0;
+}
+.step p {
+  font-size: 13px;
+  line-height: 2;
+}
+.step pre {
+  padding: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 14px/2 monospace;
+  background: var(--panel);
+  color: #8acaf3;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  text-align: left;
+}
+.step-navigation {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 12px;
+}
+.step-navigation button {
+  padding: 9px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.scope-note {
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+@media (max-width: 720px) {
+  .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+  .analysis-card,
+  .all-readings,
+  .teaching {
+    padding: 12px;
+  }
+  .teaching-controls {
+    display: block;
+  }
+  .teaching-controls label {
+    margin: 12px 0;
+  }
+  .education .section-heading {
+    gap: 10px;
+  }
+  .education .section-heading h2 {
+    font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .current-particle {
+    display: none;
+  }
+}
+.all-readings td:nth-child(4) {
+  direction: ltr;
+  text-align: right;
+  font-family: monospace;
+}
+.education .section-heading > .outline {
+  flex: 0 0 auto;
+}
+.reference-current:hover,
+.reference-pole:hover {
+  filter: brightness(1.4);
+}

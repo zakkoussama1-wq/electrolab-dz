@@ -30,6 +30,9 @@ import {
   type Result,
 } from "./solver";
 import "./style.css";
+import { Education, type Highlight } from "./Education";
+import { reading, ref, topology } from "./analysis";
+import { Glyph } from "./Glyph";
 const icons: Record<Kind, string> = {
   battery: "⊣",
   resistor: "▱",
@@ -48,6 +51,11 @@ function App() {
     [notice, setNotice] = useState(""),
     [lesson, setLesson] = useState(0),
     [zoom, setZoom] = useState(1);
+  const [highlight, setHighlight] = useState<Highlight>({
+    parts: [],
+    terminals: [],
+  });
+  const structure = topology(c);
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -55,11 +63,19 @@ function App() {
   const mutate = (v: Circuit) => {
     setC(v);
     setResult(null);
+    setHighlight({ parts: [], terminals: [] });
   };
   const edit = (p: Partial<Part>) =>
     mutate({
       ...c,
       parts: c.parts.map((x) => (x.id === selected ? { ...x, ...p } : x)),
+    });
+  const reverse = (key: "voltageRef" | "currentRef", id = selected) =>
+    setC({
+      ...c,
+      parts: c.parts.map((p) =>
+        p.id === id ? { ...p, [key]: -ref(p[key]) } : p,
+      ),
     });
   const point = (e: React.PointerEvent) => {
     const matrix = svg.current!.getScreenCTM()!;
@@ -134,6 +150,12 @@ function App() {
             (k) => typeof p[k] === "number" && Number.isFinite(p[k]),
           ) ||
           p.value <= 0 ||
+          (p.voltageRef !== undefined &&
+            p.voltageRef !== 1 &&
+            p.voltageRef !== -1) ||
+          (p.currentRef !== undefined &&
+            p.currentRef !== 1 &&
+            p.currentRef !== -1) ||
           typeof p.closed !== "boolean"
         )
           throw Error();
@@ -364,7 +386,19 @@ function App() {
                         }
                       />
                       <path
-                        className={selected === w.id ? "selected-wire" : ""}
+                        className={
+                          selected === w.id
+                            ? "selected-wire"
+                            : highlight.terminals.includes(w.a) ||
+                                highlight.terminals.includes(w.b) ||
+                                highlight.parts.some(
+                                  (id) =>
+                                    w.a.startsWith(id + ":") ||
+                                    w.b.startsWith(id + ":"),
+                                )
+                              ? "highlight-wire"
+                              : ""
+                        }
                         d={
                           Math.abs(a.y - b.y) < 1 && Math.abs(a.x - b.x) > 150
                             ? `M ${a.x} ${a.y} V ${Math.min(445, a.y + 115)} H ${b.x} V ${b.y}`
@@ -379,7 +413,11 @@ function App() {
                     <g transform={`rotate(${p.rotation})`}>
                       <rect
                         className={
-                          selected === p.id ? "component selected" : "component"
+                          highlight.parts.includes(p.id)
+                            ? "component highlighted"
+                            : selected === p.id
+                              ? "component selected"
+                              : "component"
                         }
                         x="-43"
                         y="-29"
@@ -399,24 +437,77 @@ function App() {
                           e.currentTarget.setPointerCapture(e.pointerId);
                         }}
                       />
-                      <text
-                        className={
-                          "symbol " +
-                          (p.kind === "lamp" &&
+                      <Glyph
+                        p={p}
+                        lit={
+                          p.kind === "lamp" &&
                           (result?.values[p.id]?.power ?? 0) > 0
-                            ? "lit"
-                            : "")
                         }
-                        textAnchor="middle"
-                        y="9"
-                        pointerEvents="none"
+                      />
+                      <g
+                        className="reference-current"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`عكس تيار العنصر ${i + 1}`}
+                        onClick={() => reverse("currentRef", p.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") reverse("currentRef", p.id);
+                        }}
                       >
-                        {p.kind === "switch"
-                          ? p.closed
-                            ? "⏤"
-                            : "⤴"
-                          : icons[p.kind]}
-                      </text>
+                        <path
+                          d={
+                            ref(p.currentRef) === 1
+                              ? "M-27 -43 H27 L20 -48 M27 -43 L20 -38"
+                              : "M27 -43 H-27 L-20 -48 M-27 -43 L-20 -38"
+                          }
+                        />
+                        <text textAnchor="middle" y="-52">
+                          I{i + 1}
+                        </text>
+                        <rect
+                          x="-35"
+                          y="-66"
+                          width="70"
+                          height="32"
+                          fill="transparent"
+                          stroke="none"
+                        />
+                      </g>
+                      {[0, 1].map((n) => (
+                        <text
+                          key={`pol${n}`}
+                          className="reference-pole"
+                          x={n === 0 ? -51 : 51}
+                          y="-17"
+                          textAnchor="middle"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`عكس قطبية العنصر ${i + 1}`}
+                          onClick={() => reverse("voltageRef", p.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") reverse("voltageRef", p.id);
+                          }}
+                        >
+                          {(n === 0 ? 1 : -1) * ref(p.voltageRef) === 1
+                            ? "+"
+                            : "−"}
+                        </text>
+                      ))}
+                      {result &&
+                        !result.error &&
+                        Math.abs(result.values[p.id]?.current ?? 0) > 1e-10 && (
+                          <circle className="current-particle" r="3">
+                            <animateMotion
+                              dur="1.3s"
+                              repeatCount="indefinite"
+                              path={
+                                result.values[p.id].current > 0
+                                  ? "M-38 23 H38"
+                                  : "M38 23 H-38"
+                              }
+                            />
+                          </circle>
+                        )}
                       {[0, 1].map((n) => (
                         <g
                           key={n}
@@ -434,7 +525,11 @@ function App() {
                           />
                           <circle
                             className={
-                              pending === terminal(p.id, n) ? "pending" : ""
+                              highlight.terminals.includes(terminal(p.id, n))
+                                ? "highlight-terminal"
+                                : pending === terminal(p.id, n)
+                                  ? "pending"
+                                  : ""
                             }
                             cx={n === 0 ? -58 : 58}
                             cy="0"
@@ -450,7 +545,9 @@ function App() {
                       ))}
                     </g>
                     <text className="component-name" textAnchor="middle" y="54">
-                      {labels[p.kind]} {i + 1}
+                      {labels[p.kind]} {i + 1} ·{" "}
+                      {structure.nodeOf[terminal(p.id, 0)]} /{" "}
+                      {structure.nodeOf[terminal(p.id, 1)]}
                     </text>
                     <text
                       className="component-value"
@@ -506,8 +603,16 @@ function App() {
               </div>
               <div className="metrics">
                 {[
-                  ["الجهد", "V", part && result?.values[part.id]?.voltage],
-                  ["التيار", "A", part && result?.values[part.id]?.current],
+                  [
+                    "الجهد",
+                    "V",
+                    part && result && reading(part, result)?.voltage,
+                  ],
+                  [
+                    "التيار",
+                    "A",
+                    part && result && reading(part, result)?.current,
+                  ],
                   ["القدرة", "W", part && result?.values[part.id]?.power],
                 ].map(([name, unit, v]) => (
                   <div key={String(name)}>
@@ -569,6 +674,21 @@ function App() {
                     {part.closed ? "فتح المفتاح" : "إغلاق المفتاح"}
                   </button>
                 )}
+                <div className="reference-controls">
+                  <button onClick={() => reverse("currentRef")}>
+                    عكس سهم التيار المرجعي
+                  </button>
+                  <button onClick={() => reverse("voltageRef")}>
+                    عكس قطبية الجهد المرجعي
+                  </button>
+                  <p>
+                    السهم اتجاه مفترض؛ التيار السالب يسري عكسه. عكس المرجع لا
+                    يغيّر التوصيل.{" "}
+                    {part.kind === "battery"
+                      ? "أقطاب البطارية الفيزيائية ثابتة (+ عند الطرف 0)، أما العلامتان خارج الرمز فمرجع قياس قابل للعكس."
+                      : "علامتا + و− تحددان مرجع الجهد، وليستا شحنتين ثابتتين."}
+                  </p>
+                </div>
                 <div className="edit-actions">
                   <button
                     onClick={() =>
@@ -638,6 +758,14 @@ function App() {
             </div>
           </aside>
         </div>
+        <Education
+          key={JSON.stringify(c) + selected}
+          c={c}
+          result={result}
+          selected={selected}
+          select={select}
+          highlight={setHighlight}
+        />
         <section id="lessons" className="lessons">
           <div className="section-heading">
             <div>
