@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { type Circuit, type Result, labels } from "./solver";
-import { topology, reading, fmt } from "./analysis";
+import { topology, reading, fmt, structuralDetails } from "./analysis";
 import { symbols, nodeName, type SymbolLink } from "./symbols";
 import { MathFormula } from "./MathFormula";
 import { type Method, type Quantity } from "./lessons";
@@ -28,6 +28,7 @@ export function Education({
   const [node, setNode] = useState("");
   const [loop, setLoop] = useState("");
   const t = useMemo(() => topology(c), [c]);
+  const graph = useMemo(()=>structuralDetails(c,t),[c,t]);
   const registry = useMemo(() => symbols(c), [c]);
   const p = c.parts.find((p) => p.id === selected);
   const valid = result && !result.error ? result : null;
@@ -108,7 +109,7 @@ export function Education({
                   setStep(0);
                 }}
               >
-                العقدة {nodeName(ni)} · {n.terminals.length} أطراف{" "}
+                العقدة {(n.name ?? nodeName(ni))} · {n.terminals.length} أطراف{" "}
                 {valid &&
                   `· الجهد ${fmt(valid.terminalVoltages?.[n.terminals[0]] ?? NaN)} فولت`}
               </button>
@@ -155,6 +156,11 @@ export function Education({
             ))}
           </div>
         </div>
+      </div>
+      <div className="analysis-card">
+        <h3>المسارات والعقد الأساسية</h3>
+        <p>{graph.essential.length} عقد أساسية (أو نهايات) و{graph.paths.length} مسارات بعد جمع العناصر المتسلسلة. هذا عدّ مختلف عن عدّ كل عنصر كفرع. عدد الحلقات البسيطة {graph.truncated ? 'يتجاوز حد الاستعراض' : graph.simple.length}، وعدد المعادلات المستقلة {t.loops.length}.</p>
+        <div className="chips">{graph.paths.map((p,i)=><button key={i} onClick={()=>highlight({parts:p.steps.map(s=>s.id),terminals:[]})}>المسار الأساسي {i+1}</button>)}</div>
       </div>
       <p className="topology-note">
         {t.open.length
@@ -270,7 +276,7 @@ export function Education({
                 <option value="">عقدة العنصر تلقائيًا</option>
                 {t.nodes.map((n, i) => (
                   <option key={n.id} value={n.id}>
-                    العقدة {nodeName(i)}
+                    العقدة {(n.name ?? nodeName(i))}
                   </option>
                 ))}
               </select>
@@ -371,7 +377,7 @@ export function Education({
       <p className="scope-note">
         هذه المرحلة: أوم، قانونا كيرشوف، اختزال توالٍ/توازٍ ومكافئة مصدر اختبار.
         لا دعم تعليمي بعد للتراكب وميلمان وكينيلي وثيفنن ونورتن أو التصحيح
-        الرمزي الحر للمعادلات. ملفات PDF الجامعية لم تُرفق بعد.
+        الرمزي الحر للمعادلات. مرجع المنهج: Chapter 1.pdf وSeries 1.pdf؛ راجع صفحة تقدم التطوير لمعرفة التمارين المختبرة.
       </p>
     </section>
   );

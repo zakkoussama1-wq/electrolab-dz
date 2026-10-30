@@ -1,3 +1,4 @@
+import { connectivity } from "./connectivity";
 import {
   solve,
   terminal,
@@ -22,7 +23,7 @@ export const resistance = (p: Part) => (p.kind === "ammeter" ? 0.001 : p.value);
 export type Branch = { id: string; a: string; b: string; active: boolean };
 export type Loop = { id: string; steps: { id: string; sign: number }[] };
 export type Topology = {
-  nodes: { id: string; terminals: string[] }[];
+  nodes: { id: string; terminals: string[]; name?: string }[];
   branches: Branch[];
   loops: Loop[];
   nodeOf: Record<string, string>;
@@ -31,35 +32,10 @@ export type Topology = {
   error?: string;
 };
 export function topology(c: Circuit): Topology {
-  const nodeOf: Record<string, string> = {};
-  const parent = new Map<string, string>();
-  for (const p of c.parts)
-    for (const n of [0, 1]) parent.set(terminal(p.id, n), terminal(p.id, n));
-  const root = (a: string): string =>
-    parent.get(a) === a ? a : root(parent.get(a)!);
-  for (const w of c.wires) {
-    if (!parent.has(w.a) || !parent.has(w.b))
-      return {
-        nodes: [],
-        branches: [],
-        loops: [],
-        nodeOf,
-        open: [],
-        shorted: [],
-        error: "طرف سلك غير موجود",
-      };
-    parent.set(root(w.a), root(w.b));
-  }
-  const groups = new Map<string, string[]>();
-  for (const t of parent.keys()) {
-    const r = root(t);
-    groups.set(r, [...(groups.get(r) || []), t]);
-  }
-  const nodes = [...groups.values()].map((terminals, i) => ({
-    id: `N${i + 1}`,
-    terminals,
-  }));
-  nodes.forEach((n) => n.terminals.forEach((t) => (nodeOf[t] = n.id)));
+  let connections: ReturnType<typeof connectivity>;
+  try { connections = connectivity(c); }
+  catch (e) { return { nodes: [], branches: [], loops: [], nodeOf: {}, open: [], shorted: [], error: (e as Error).message }; }
+  const { nodes, nodeOf } = connections;
   const branches = c.parts.map((p) => ({
     id: p.id,
     a: nodeOf[terminal(p.id, 0)],
@@ -306,4 +282,65 @@ export function checks(c: Circuit, r: Result, t = topology(c)) {
   }));
   const power = Object.values(r.values).reduce((sum, v) => sum + v.power, 0);
   return { kcl, kvl, power };
+}
+
+/** Degree-two vertices are retained electrically, but grouped pedagogically. */
+export function structuralDetails(c: Circuit, t = topology(c)) {
+  const active = t.branches.filter(b => b.active);
+  const incident = (n: string) => active.filter(b => b.a === n || b.b === n);
+  const essential = t.nodes.filter(n => incident(n.id).length !== 2);
+  const visited = new Set<string>();
+  const paths: {a: string; b: string; steps: Loop['steps']}[] = [];
+  for (const start of [...essential, ...t.nodes]) for (const first of incident(start.id)) {
+    if (visited.has(first.id)) continue;
+    let n = start.id, edge: Branch | undefined = first;
+    const steps: Loop['steps'] = [];
+    while (edge && !visited.has(edge.id)) {
+      visited.add(edge.id);
+      steps.push({id: edge.id, sign: edge.a === n ? 1 : -1});
+      n = edge.a === n ? edge.b : edge.a;
+      if (n === start.id || incident(n).length !== 2) break;
+      edge = incident(n).find(b => !visited.has(b.id));
+    }
+    paths.push({a: start.id, b: n, steps});
+  }
+  // Enumerate simple cycles, including parallel edges; bounded for large drawings.
+  const simple: Loop[] = [], keys = new Set<string>();
+  let truncated = false, budget = 20000;
+  for (const start of t.nodes) {
+    function walk(n: string, seen: Set<string>, steps: Loop['steps']) {
+      if (--budget < 0 || simple.length >= 256) { truncated = true; return; }
+      for (const edge of incident(n)) {
+        if (steps.some(s => s.id === edge.id)) continue;
+        const next = edge.a === n ? edge.b : edge.a;
+        const path = [...steps, {id: edge.id, sign: edge.a === n ? 1 : -1}];
+        if (next === start.id) {
+          const key = path.map(s => s.id).sort().join('|');
+          if (!keys.has(key)) { keys.add(key); simple.push({id: `S${simple.length + 1}`, steps: path}); }
+        } else if (!seen.has(next)) walk(next, new Set([...seen, next]), path);
+      }
+    }
+    walk(start.id, new Set([start.id]), []);
+    if (truncated) break;
+  }
+  paths.sort((a,b)=> {
+    const index = (path: typeof a) => c.parts.findIndex(p => p.kind === 'resistor' && path.steps.some(s=>s.id===p.id));
+    return index(a)-index(b);
+  });
+  return {essential, paths, simple, truncated};
+}
+export type Diagnostic = {kind: 'error' | 'warning'; text: string; parts: string[]; terminals: string[]};
+export function diagnose(c: Circuit, r: Result | null): Diagnostic[] {
+  const t = topology(c), issues: Diagnostic[] = [];
+  if (t.error) {
+    const valid = new Set(c.parts.flatMap(p=>[terminal(p.id,0),terminal(p.id,1)]));
+    const terminals=c.wires.filter(w=>!valid.has(w.a)||!valid.has(w.b)).flatMap(w=>[w.a,w.b]).filter(t=>valid.has(t));
+    return [{kind:'error',text:t.error,parts:c.parts.filter(p=>terminals.some(t=>t===terminal(p.id,0)||t===terminal(p.id,1))).map(p=>p.id),terminals}];
+  }
+  if (r?.error) issues.push({kind: 'error', text: r.error, parts: c.parts.filter(p => p.kind === 'battery').map(p => p.id), terminals: []});
+  if (t.shorted.length) issues.push({kind: 'warning', text: 'طرفا هذه العناصر على العقدة نفسها: الأسلاك تتجاوزها. احذف السلك المتجاوز إن لم يكن ذلك مقصودًا.', parts: t.shorted, terminals: []});
+  const open = t.open.filter(id => c.parts.find(p => p.id === id)?.kind !== 'voltmeter');
+  if (open.length) issues.push({kind: 'warning', text: 'هذه الفروع مفتوحة أو خارج أي مسار مغلق. افحص الطرف غير الموصول ومسار الرجوع والمفتاح؛ قد يبقى فرع مفتوحًا عمدًا.', parts: open, terminals: t.nodes.filter(n => n.terminals.length === 1).flatMap(n => n.terminals)});
+  if (r?.warning) issues.push({kind: 'warning', text: r.warning, parts: [], terminals: []});
+  return issues;
 }

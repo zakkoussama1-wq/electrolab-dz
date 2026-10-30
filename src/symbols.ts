@@ -27,8 +27,8 @@ export function symbols(c: Circuit) {
   t.nodes.forEach((n, i) =>
     links.push({
       key: `node${i}`,
-      tex: `V_{${nodeName(i)}}`,
-      label: `جهد العقدة ${nodeName(i)}`,
+      tex: `V_{${n.name ?? nodeName(i)}}`,
+      label: `جهد العقدة ${n.name ?? nodeName(i)}`,
       focus: { parts: [], terminals: n.terminals },
     }),
   );

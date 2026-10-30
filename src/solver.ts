@@ -1,3 +1,4 @@
+import { connectivity } from "./connectivity";
 export type Kind =
   | "battery"
   | "resistor"
@@ -17,10 +18,12 @@ export type Part = {
   voltageRef?: 1 | -1;
   currentRef?: 1 | -1;
   initialVoltage?: number;
+  label?: string;
+  terminalLabels?: [string, string];
   capUnit?: "F" | "mF" | "µF" | "nF";
 };
 export type Wire = { id: string; a: string; b: string };
-export type Circuit = { parts: Part[]; wires: Wire[] };
+export type Circuit = { parts: Part[]; wires: Wire[]; nodeNames?: Record<string, string> };
 export type Result = {
   error?: string;
   warning?: string;
@@ -42,20 +45,13 @@ export function solve(
     return fail("لا يوجد مصدر جهد. أضف بطارية وأوصل قطبيها بالدارة.");
   if (c.parts.some((p) => !Number.isFinite(p.value) || p.value <= 0))
     return fail("القيم يجب أن تكون أعدادًا موجبة ومحدودة.");
+  let connections: ReturnType<typeof connectivity>;
+  try { connections = connectivity(c); }
+  catch (e) { return fail((e as Error).message); }
   const parent = new Map<string, string>();
-  c.parts.forEach((p) =>
-    [0, 1].forEach((n) => parent.set(terminal(p.id, n), terminal(p.id, n))),
-  );
-  const root = (s: string): string => {
-    const p = parent.get(s)!;
-    return p === s ? s : root(p);
-  };
+  for (const n of connections.nodes) for (const t of n.terminals) parent.set(t, n.terminals[0]);
+  const root = (s: string): string => parent.get(s) === s ? s : root(parent.get(s)!);
   const join = (a: string, b: string) => parent.set(root(a), root(b));
-  for (const w of c.wires) {
-    if (!parent.has(w.a) || !parent.has(w.b))
-      return fail("سلك متصل بطرف غير موجود. احذف السلك وأعد توصيله.");
-    join(w.a, w.b);
-  }
   // Validate ideal short paths separately; keep switches as MNA branches so
   // their currents are solved rather than silently reported as zero.
   const shortParent = new Map(parent);

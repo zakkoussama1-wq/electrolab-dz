@@ -33,7 +33,7 @@ export function CircuitInspection({
                   onInspect({ kind: "node", id: n.id });
                 }}
               >
-                العقدة {nodeName(i)}
+                العقدة {(n.name ?? nodeName(i))}
               </button>
             ))}
           </div>
