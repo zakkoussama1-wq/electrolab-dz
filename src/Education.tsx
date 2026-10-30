@@ -3,7 +3,8 @@ import { type Circuit, type Result, labels } from "./solver";
 import { topology, reading, fmt } from "./analysis";
 import { symbols, nodeName, type SymbolLink } from "./symbols";
 import { MathFormula } from "./MathFormula";
-import { buildLesson, type Method, type Quantity } from "./lessons";
+import { type Method, type Quantity } from "./lessons";
+import { buildAcademicLesson as buildLesson } from "./academic";
 export type Highlight = { parts: string[]; terminals: string[] };
 type Props = {
   c: Circuit;
@@ -369,8 +370,8 @@ export function Education({
       </div>
       <p className="scope-note">
         هذه المرحلة: أوم، قانونا كيرشوف، اختزال توالٍ/توازٍ ومكافئة مصدر اختبار.
-        لا دعم تعليمي بعد للتراكب وميلمان وكينيلي وثيفنن ونورتن أو وضع الامتحان.
-        ملفات PDF الجامعية لم تُرفق بعد.
+        لا دعم تعليمي بعد للتراكب وميلمان وكينيلي وثيفنن ونورتن أو التصحيح
+        الرمزي الحر للمعادلات. ملفات PDF الجامعية لم تُرفق بعد.
       </p>
     </section>
   );

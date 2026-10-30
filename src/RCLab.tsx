@@ -10,7 +10,9 @@ import {
   type RCFrame,
   rcExample,
 } from "./rc";
-import { ref, fmt } from "./analysis";
+import { ref, fmt, topology, checks, reading } from "./analysis";
+import { academicTitles, givenEquations } from "./academic";
+import { type Inspection } from "./CircuitInspection";
 import { symbols, linked, numberTex as num, type Focus } from "./symbols";
 import { MathFormula } from "./MathFormula";
 type Props = {
@@ -21,13 +23,24 @@ type Props = {
   highlight: (f: Focus) => void;
   load: (c: Circuit) => void;
   resetToken: number;
+  embedded?: boolean;
+  inspection?: Inspection | null;
+  selected?: string;
+  compareRequested?: boolean;
 };
-const units = { voltage: "V", resistorVoltage: "V", current: "A", charge: "C" };
+const units = {
+  voltage: "V",
+  resistorVoltage: "V",
+  current: "A",
+  charge: "C",
+  energy: "J",
+};
 const chartLabels = {
   voltage: "جهد المكثف",
   resistorVoltage: "جهد المقاومة المكافئة",
   current: "تيار المكثف",
   charge: "شحنة المكثف",
+  energy: "الطاقة المخزنة",
 };
 function Chart({
   field,
@@ -178,7 +191,7 @@ function RCLesson({
     sigma = sign === -1 ? "-" : "";
   const definitions =
     "الجهد والتيار في هذه المعادلات يتبعان المرجعين المرسومين. جهد المصدر النهائي يعبر عن الجهد الذي تراه سعة المكثف عبر الشبكة المقاومة؛ جهد المقاومة في الرسم البياني هو الهبوط المكافئ باتجاه شحن الطرف الأول.";
-  const stages = model.isolated
+  const original = model.isolated
     ? [
         {
           title: "المكثف المعزول يحتفظ بشحنته",
@@ -256,9 +269,78 @@ function RCLesson({
           ],
         },
       ];
+  const structure = topology(c);
+  const givens = {
+    title: "",
+    text: "القيم مباشرة من العناصر والجهد الابتدائي المحفوظ لهذا المقطع، بوحدات النظام الدولي.",
+    tex: [
+      ...givenEquations(c).map((l) => l.tex),
+      `V_0=${num(initial)}\\,\\mathrm{V}`,
+    ],
+  };
+  const wanted = {
+    title: "",
+    text: "نحسب الجهد والتيار والشحنة والطاقة بدلالة الزمن ونحدد الثابت الزمني عندما يوجد مسار مقاوم.",
+    tex: [`${V}(t),\\quad ${I}(t),\\quad ${Q}(t),\\quad W_C(t)`],
+  };
+  const topologyStep = {
+    title: "",
+    text:
+      `التوصيلات تعطي ${structure.nodes.length} عقد و${structure.branches.length} فروع و${structure.loops.length} حلقات مستقلة. ` +
+      (model.isolated
+        ? "لا يوجد مسار تفريغ مقاوم للمكثف."
+        : "نحدد مقاومة ثيفينن عند منفذ المكثف من تغير تيار المنفذ بين جهدي اختبار 0V و1V؛ هذا يعادل إزالة أثر مصادر الجهد المستقلة عند حساب المقاومة."),
+    tex: model.isolated
+      ? [`${I}=0`]
+      : [`R_{\\mathrm{Th}}=${num(model.resistance)}\\,\\Omega`],
+  };
+  const choice = {
+    title: "",
+    text: model.isolated
+      ? "نستخدم حفظ الشحنة، لأن المكثف معزول ولا يوجد تسريب في النموذج المثالي."
+      : "الدارة خطية وفيها مكثف واحد فقط؛ لذلك نستخدم الحل الأسي من الرتبة الأولى مع الجهد الابتدائي والنهائي ومقاومة ثيفينن. لا نفترض أن الجهد النهائي يساوي جهد البطارية في شبكة محملة.",
+    tex: [] as string[],
+  };
+  const stages = (
+    model.isolated
+      ? [
+          givens,
+          wanted,
+          topologyStep,
+          choice,
+          original[0],
+          {
+            ...original[0],
+            text: "لا نطبق قانون الجهد على مسار مفتوح؛ من انعدام تيار المكثف تكون مشتقة جهده صفرًا.",
+          },
+          givens,
+          { ...original[0], text: "نحسب الشحنة والطاقة من الجهد المحتفظ به." },
+          {
+            title: "",
+            text: "الجهد ثابت والتيار صفر رغم فتح المفتاح.",
+            tex: [`\\boxed{${V}=${num(initial)}\\,\\mathrm{V},\\quad ${I}=0}`],
+          },
+          original[0],
+        ]
+      : [
+          givens,
+          wanted,
+          topologyStep,
+          choice,
+          { ...original[2], tex: [original[0].tex[1], ...original[2].tex] },
+          { ...original[1], tex: [original[0].tex[0], ...original[1].tex] },
+          original[3],
+          original[4],
+          original[5],
+          { ...original[6], text: original[5].text + " " + original[6].text },
+        ]
+  ).map((st, i) => ({ ...st, title: academicTitles[i] }));
   const active = Math.min(step, stages.length - 1);
   const focus = (index: number) => ({
-    parts: index === 0 || index === 6 ? c.parts.map((p) => p.id) : [cap.id],
+    parts:
+      index === 2 || index === 5 || index === 9
+        ? c.parts.map((p) => p.id)
+        : [cap.id],
     terminals: [],
   });
   return (
@@ -314,6 +396,10 @@ export function RCLab({
   highlight,
   load,
   resetToken,
+  embedded = false,
+  inspection = null,
+  selected = "",
+  compareRequested = false,
 }: Props) {
   const signature = rcSignature(c),
     base = rcSignature(c, false);
@@ -330,6 +416,7 @@ export function RCLab({
     [compare, setCompare] = useState(false),
     [answers, setAnswers] = useState(["", "", ""]),
     [graded, setGraded] = useState(false);
+  useEffect(() => setCompare(compareRequested), [resetToken, compareRequested]);
   const previous = useRef({
     signature,
     base,
@@ -418,27 +505,29 @@ export function RCLab({
             الفعلية
           </p>
         </div>
-        <div className="rc-tabs">
-          <button
-            className={!exam ? "active" : ""}
-            onClick={() => {
-              setExam(false);
-              setReveal(false);
-            }}
-          >
-            وضع التعلم
-          </button>
-          <button
-            className={exam ? "active" : ""}
-            onClick={() => {
-              reset();
-              setExam(true);
-              setReveal(false);
-            }}
-          >
-            وضع الامتحان
-          </button>
-        </div>
+        {!embedded && (
+          <div className="rc-tabs">
+            <button
+              className={!exam ? "active" : ""}
+              onClick={() => {
+                setExam(false);
+                setReveal(false);
+              }}
+            >
+              وضع التعلم
+            </button>
+            <button
+              className={exam ? "active" : ""}
+              onClick={() => {
+                reset();
+                setExam(true);
+                setReveal(false);
+              }}
+            >
+              وضع الامتحان
+            </button>
+          </div>
+        )}
       </div>
       {analysis.error && (
         <p role="alert" className="message error">
@@ -600,7 +689,13 @@ export function RCLab({
               </p>
               <div className="rc-graphs">
                 {(
-                  ["voltage", "resistorVoltage", "current", "charge"] as const
+                  [
+                    "voltage",
+                    "resistorVoltage",
+                    "current",
+                    "charge",
+                    "energy",
+                  ] as const
                 ).map((field) => (
                   <Chart
                     key={field}
@@ -612,9 +707,11 @@ export function RCLab({
                     onCursor={(t) => setCursor(t)}
                     compare={compare}
                     sign={
-                      field === "current"
-                        ? ref(capView?.currentRef)
-                        : ref(capView?.voltageRef)
+                      field === "energy"
+                        ? 1
+                        : field === "current"
+                          ? ref(capView?.currentRef)
+                          : ref(capView?.voltageRef)
                     }
                   />
                 ))}
@@ -657,6 +754,15 @@ export function RCLab({
                 جهد كل مقاومة منفردة. الجهود والشحنة تتبع قطبية المكثف المرجعية،
                 والتيار يتبع سهمه المختار في الرسم.
               </p>
+              <RCContext
+                c={c}
+                frame={frame}
+                inspection={
+                  inspection ??
+                  (selected ? { kind: "part", id: selected } : null)
+                }
+                highlight={highlight}
+              />
               <RCLesson
                 c={c}
                 model={model}
@@ -668,53 +774,117 @@ export function RCLab({
           )}
         </>
       )}
-      <section id="lessons" className="rc-experiments">
-        <h3>خمس تجارب تعليمية</h3>
-        <div className="lesson-grid">
-          {[
-            "شحن مكثف غير مشحون",
-            "تفريغ عبر مقاومة",
-            "تأثير زيادة المقاومة",
-            "تأثير زيادة السعة",
-            "مقارنة التحليل والتكامل العددي",
-          ].map((label, i) => (
-            <button
-              className="lesson"
-              key={label}
-              onClick={() => {
-                setRunning(false);
-                setTime(0);
-                setCursor(null);
-                setCompare(i === 4);
-                setExam(false);
-                setReveal(false);
-                load(rcExample(i));
-              }}
-            >
-              <span className="lesson-number">0{i + 1}</span>
-              <div>
-                <h3>{label}</h3>
-                <p>
-                  {i === 0
-                    ? "R=1kΩ، C=1000µF، E=12V"
-                    : i === 1
-                      ? "مكثف عند 12V ومقاومة، دون بطارية"
-                      : i === 2
-                        ? "المقاومة 2kΩ: قارن τ بالتجربة الأولى"
-                        : i === 3
-                          ? "السعة 2000µF: لاحظ تضاعف τ"
-                          : "الحل الأسي مقابل طريقة Euler وخطئها العددي"}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-        <p className="muted">
-          تحميل تجربة يستبدل دارة RC الحالية؛ احفظها أولًا. الجهد الابتدائي محدد
-          بين طرف المكثف الأول والثاني، ولا يتغير عند عكس مرجع العرض. تغيير
-          التبويب يعيد الزمن إلى بداية التجربة، مع الاحتفاظ بعناصر كل مختبر.
-        </p>
-      </section>
+      {!embedded && (
+        <section id="lessons" className="rc-experiments">
+          <h3>خمس تجارب تعليمية</h3>
+          <div className="lesson-grid">
+            {[
+              "شحن مكثف غير مشحون",
+              "تفريغ عبر مقاومة",
+              "تأثير زيادة المقاومة",
+              "تأثير زيادة السعة",
+              "مقارنة التحليل والتكامل العددي",
+            ].map((label, i) => (
+              <button
+                className="lesson"
+                key={label}
+                onClick={() => {
+                  setRunning(false);
+                  setTime(0);
+                  setCursor(null);
+                  setCompare(i === 4);
+                  setExam(false);
+                  setReveal(false);
+                  load(rcExample(i));
+                }}
+              >
+                <span className="lesson-number">0{i + 1}</span>
+                <div>
+                  <h3>{label}</h3>
+                  <p>
+                    {i === 0
+                      ? "R=1kΩ، C=1000µF، E=12V"
+                      : i === 1
+                        ? "مكثف عند 12V ومقاومة، دون بطارية"
+                        : i === 2
+                          ? "المقاومة 2kΩ: قارن τ بالتجربة الأولى"
+                          : i === 3
+                            ? "السعة 2000µF: لاحظ تضاعف τ"
+                            : "الحل الأسي مقابل طريقة Euler وخطئها العددي"}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="muted">
+            تحميل تجربة يستبدل دارة RC الحالية؛ احفظها أولًا. الجهد الابتدائي
+            محدد بين طرف المكثف الأول والثاني، ولا يتغير عند عكس مرجع العرض.
+            تغيير التبويب يعيد الزمن إلى بداية التجربة، مع الاحتفاظ بعناصر كل
+            مختبر.
+          </p>
+        </section>
+      )}
     </section>
   );
+}
+function RCContext({
+  c,
+  frame,
+  inspection,
+  highlight,
+}: {
+  c: Circuit;
+  frame: RCFrame;
+  inspection: Inspection | null;
+  highlight: (f: Focus) => void;
+}) {
+  if (!inspection) return null;
+  const s = symbols(c),
+    v = checks(c, frame.result);
+  const sum = (terms: { id: string; sign: number }[], letter: string) =>
+    terms
+      .map(
+        (t, i) =>
+          `${t.sign < 0 ? "-" : i ? "+" : ""}${linked(s.part(t.id, letter))}`,
+      )
+      .join(" ") || "0";
+  let tex = "",
+    text = "";
+  if (inspection.kind === "node") {
+    const n = v.kcl.find((n) => n.id === inspection.id);
+    if (n) {
+      tex = `${sum(n.terms, "I")}=${num(n.residual)}\\,\\mathrm{A}\\approx0`;
+      text =
+        "قانون كيرشوف للتيار عند العقدة المختارة، بما فيه تيار المكثف اللحظي.";
+    }
+  } else if (inspection.kind === "loop") {
+    const l = v.kvl.find((l) => l.id === inspection.id);
+    if (l) {
+      tex = `${sum(l.terms, "V")}=${num(l.residual)}\\,\\mathrm{V}\\approx0`;
+      text =
+        "قانون الجهد على الحلقة المختارة عند زمن المؤشر، مع تصحيح إشارات المراجع.";
+    }
+  } else {
+    const p = c.parts.find((p) => p.id === inspection.id);
+    if (p) {
+      const value = reading(p, frame.result)!;
+      tex = ["resistor", "lamp", "ammeter"].includes(p.kind)
+        ? `${linked(s.part(p.id, "V"))}=${ref(p.currentRef) * ref(p.voltageRef) < 0 ? "-" : ""}${linked(s.part(p.id, "R"))}${linked(s.part(p.id))}=${num(value.voltage)}\\,\\mathrm{V}`
+        : p.kind === "capacitor"
+          ? `${linked(s.part(p.id))}=${ref(p.currentRef) * ref(p.voltageRef) < 0 ? "-" : ""}${linked(s.part(p.id, "C"))}\\frac{d${linked(s.part(p.id, "V"))}}{dt}=${num(value.current)}\\,\\mathrm{A}`
+          : `${linked(s.part(p.id, "P"))}=${num(value.power)}\\,\\mathrm{W}`;
+      text = "العلاقة الخاصة بالعنصر المختار، محسوبة عند الزمن الحالي.";
+    }
+  }
+  return tex ? (
+    <section className="teaching rc-context">
+      <h3>القانون المرتبط بتحديدك</h3>
+      <p>{text}</p>
+      <MathFormula
+        tex={tex}
+        links={s.links}
+        onSymbol={(l) => highlight(l.focus)}
+      />
+    </section>
+  ) : null;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Zap,
@@ -36,7 +36,10 @@ import { Glyph } from "./Glyph";
 import { nodeName } from "./symbols";
 import { MathFormula } from "./MathFormula";
 import { RCLab } from "./RCLab";
-import { rcExample, capUnits } from "./rc";
+import { rcExample, capUnits, rcSignature } from "./rc";
+import { classifyCircuit, freePlacement } from "./unified";
+import { CircuitInspection, type Inspection } from "./CircuitInspection";
+import { UnifiedExam } from "./UnifiedExam";
 const icons: Record<Kind, string> = {
   capacitor: "⊣⊢",
   battery: "⊣",
@@ -47,11 +50,15 @@ const icons: Record<Kind, string> = {
   voltmeter: "Ⓥ",
 };
 function App() {
-  const [lab, setLab] = useState<"dc" | "rc">("dc");
+  const [examMode, setExamMode] = useState(false);
+  const [reveal, setReveal] = useState(false);
+  const concealed = examMode && !reveal;
+  const [rcFocus, setRCFocus] = useState<Inspection | null>(null);
   const [rcPlaying, setRCPlaying] = useState(false);
+  const [rcCompare, setRCCompare] = useState(false);
   const [rcCommand, setRCCommand] = useState(0);
   const [rcReset, setRCReset] = useState(0);
-  const circuits = useRef({ dc: example(), rc: rcExample() });
+
   const [c, setC] = useState<Circuit>(example),
     [selected, select] = useState<string>("R1"),
     [dark, setDark] = useState(true),
@@ -65,6 +72,9 @@ function App() {
     parts: [],
     terminals: [],
   });
+  const signature = rcSignature(c);
+  const classification = useMemo(() => classifyCircuit(c), [signature]);
+  const lab = c.parts.some((p) => p.kind === "capacitor") ? "rc" : "dc";
   const structure = topology(c);
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
@@ -78,17 +88,10 @@ function App() {
     setC(v);
     setResult(null);
     setHighlight({ parts: [], terminals: [] });
+    setRCFocus(null);
   };
-  const switchLab = (next: "dc" | "rc") => {
-    if (next === lab) return;
-    circuits.current[lab] = c;
-    setLab(next);
-    mutate(circuits.current[next]);
-    select(next === "rc" ? "C1" : "R1");
-    setPending(null);
-    setRCCommand(0);
-  };
-  const loadRC = (v: Circuit) => {
+  const loadRC = (v: Circuit, compare = false) => {
+    setRCCompare(compare);
     mutate(v);
     setRCReset((n) => n + 1);
     select(v.parts.find((p) => p.kind === "capacitor")?.id ?? "");
@@ -135,6 +138,7 @@ function App() {
     setPending(null);
   };
   const load = (n: number) => {
+    setRCCompare(false);
     mutate(example(n));
     setLesson(n);
     select("R1");
@@ -149,8 +153,7 @@ function App() {
         {
           id,
           kind,
-          x: 250 + Math.random() * 400,
-          y: 160 + Math.random() * 180,
+          ...freePlacement(c),
           rotation: 0,
           value:
             kind === "capacitor"
@@ -215,13 +218,6 @@ function App() {
           )
         )
           throw Error();
-      const target = v.parts.some((p: Part) => p.kind === "capacitor")
-        ? "rc"
-        : "dc";
-      if (target !== lab) {
-        circuits.current[lab] = c;
-        setLab(target);
-      }
       mutate(v);
       setRCReset((n) => n + 1);
       select("");
@@ -232,10 +228,7 @@ function App() {
     }
   };
   const save = () => {
-    localStorage.setItem(
-      lab === "rc" ? "electrolab-rc" : "electrolab",
-      JSON.stringify(c),
-    );
+    localStorage.setItem("electrolab-unified", JSON.stringify(c));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(
       new Blob([JSON.stringify(c)], { type: "application/json" }),
@@ -258,18 +251,7 @@ function App() {
           </span>
         </a>
         <nav>
-          <button
-            className={lab === "dc" ? "active" : ""}
-            onClick={() => switchLab("dc")}
-          >
-            مختبر DC
-          </button>
-          <button
-            className={lab === "rc" ? "active" : ""}
-            onClick={() => switchLab("rc")}
-          >
-            مختبر RC
-          </button>
+          <span className="active">المختبر الموحد</span>
           <button
             onClick={() =>
               document
@@ -292,8 +274,7 @@ function App() {
         <div className="intro">
           <div>
             <div className="eyebrow">
-              تعلّم بالتجربة <span> / </span>{" "}
-              {lab === "rc" ? "المقاومة والمكثف · RC" : "مختبر التيار المستمر"}
+              تعلّم بالتجربة <span> / </span> مساحة واحدة · تحليل تلقائي DC وRC
             </div>
             <h1>
               أفكارك، في دارة حيّة<span>.</span>
@@ -309,39 +290,78 @@ function App() {
             </small>
           </div>
         </div>
+        <div className="unified-mode rc-tabs">
+          <button
+            className={!examMode ? "active" : ""}
+            onClick={() => {
+              setExamMode(false);
+              setReveal(false);
+            }}
+          >
+            وضع التعلم
+          </button>
+          <button
+            className={examMode ? "active" : ""}
+            onClick={() => {
+              setExamMode(true);
+              setReveal(false);
+              setResult(null);
+              setRCPlaying(false);
+              setRCCommand(0);
+              setRCReset((n) => n + 1);
+            }}
+          >
+            وضع الامتحان
+          </button>
+          <span>ارسم بحرية؛ نوع التحليل يُستنتج من الدارة.</span>
+          <button
+            className="outline"
+            onClick={() => loadRC({ parts: [], wires: [] })}
+          >
+            دارة جديدة فارغة
+          </button>
+        </div>
+        <div className="classification" role="status">
+          <strong>
+            {classification.mode === "dc"
+              ? "تحليل DC"
+              : classification.mode === "rc"
+                ? "تحليل زمني RC"
+                : "دارة غير مدعومة"}
+          </strong>
+          <span>{classification.reason}</span>
+        </div>
         <div className="lab">
           <aside className="library">
             <div className="panel-title">
               <h3>مكتبة العناصر</h3>
-              <span>{lab === "rc" ? "07" : "06"}</span>
+              <span>07</span>
             </div>
             <p className="muted">اضغط لإضافة عنصر إلى المساحة</p>
             <div className="category">العناصر الأساسية</div>
             <div className="parts">
-              {(Object.keys(labels) as Kind[])
-                .filter((k) => lab === "rc" || k !== "capacitor")
-                .map((k) => (
-                  <button className="part-card" key={k} onClick={() => add(k)}>
-                    <span className={"part-icon " + k}>{icons[k]}</span>
-                    <strong>{labels[k]}</strong>
-                    <small>
-                      {k === "capacitor"
-                        ? "تخزين الشحنة"
-                        : k === "battery"
-                          ? "مصدر جهد DC"
-                          : k === "resistor"
-                            ? "تحكّم في التيار"
-                            : k === "lamp"
-                              ? "حمل مقاوم ثابت"
-                              : k === "switch"
-                                ? "فتح وإغلاق الدارة"
-                                : k === "ammeter"
-                                  ? "قياس التيار"
-                                  : "قياس الجهد"}
-                    </small>
-                    <Plus size={12} />
-                  </button>
-                ))}
+              {(Object.keys(labels) as Kind[]).map((k) => (
+                <button className="part-card" key={k} onClick={() => add(k)}>
+                  <span className={"part-icon " + k}>{icons[k]}</span>
+                  <strong>{labels[k]}</strong>
+                  <small>
+                    {k === "capacitor"
+                      ? "تخزين الشحنة"
+                      : k === "battery"
+                        ? "مصدر جهد DC"
+                        : k === "resistor"
+                          ? "تحكّم في التيار"
+                          : k === "lamp"
+                            ? "حمل مقاوم ثابت"
+                            : k === "switch"
+                              ? "فتح وإغلاق الدارة"
+                              : k === "ammeter"
+                                ? "قياس التيار"
+                                : "قياس الجهد"}
+                  </small>
+                  <Plus size={12} />
+                </button>
+              ))}
             </div>
             <div className="tip">
               <Zap size={17} />
@@ -369,9 +389,7 @@ function App() {
                 <button
                   title="استرجاع آخر حفظ محلي"
                   onClick={() => {
-                    const s = localStorage.getItem(
-                      lab === "rc" ? "electrolab-rc" : "electrolab",
-                    );
+                    const s = localStorage.getItem("electrolab-unified");
                     s ? restore(s) : setNotice("لا توجد دارة محفوظة محليًا");
                   }}
                 >
@@ -381,6 +399,12 @@ function App() {
                 <button
                   className="run"
                   onClick={() => {
+                    if (concealed) {
+                      setNotice(
+                        "الامتحان: اطلب إظهار الحل أو صحح إجاباتك أولًا.",
+                      );
+                      return;
+                    }
                     if (lab === "rc") setRCCommand((n) => n + 1);
                     else setResult(solve(c));
                     setPending(null);
@@ -503,6 +527,7 @@ function App() {
                         onPointerDown={(e) => {
                           e.stopPropagation();
                           select(p.id);
+                          setRCFocus({ kind: "part", id: p.id });
                           setHighlight({ parts: [p.id], terminals: [] });
                           if (mode) return;
                           const v = point(e);
@@ -929,74 +954,138 @@ function App() {
             </div>
           </aside>
         </div>
-        {lab === "rc" ? (
-          <RCLab
+        {examMode && (
+          <UnifiedExam
             c={c}
-            command={rcCommand}
-            resetToken={rcReset}
-            onResult={setResult}
-            onRunning={setRCPlaying}
-            highlight={setHighlight}
-            load={loadRC}
+            selected={selected}
+            reveal={reveal}
+            onReveal={() => {
+              setReveal(true);
+              if (lab === "dc") setResult(solve(c));
+            }}
           />
-        ) : (
-          <Education
-            key={JSON.stringify(c)}
+        )}
+        {!concealed && lab === "rc" && (
+          <CircuitInspection
             c={c}
             result={result}
             selected={selected}
             select={select}
             highlight={setHighlight}
-            currentHighlight={highlight}
+            onInspect={setRCFocus}
           />
         )}
-        {lab === "dc" && (
-          <section id="lessons" className="lessons">
-            <div className="section-heading">
-              <div>
-                <h2>
-                  <BookOpen size={20} /> جرّب، ثم افهم
-                </h2>
-                <p>تجارب قصيرة تبني فهمًا أعمق للدوائر الكهربائية.</p>
-              </div>
-              <span>03 تجارب تفاعلية</span>
+        {!concealed &&
+          (lab === "rc" ? (
+            <RCLab
+              c={c}
+              command={rcCommand}
+              resetToken={rcReset}
+              onResult={setResult}
+              onRunning={setRCPlaying}
+              highlight={setHighlight}
+              load={loadRC}
+              embedded
+              compareRequested={rcCompare}
+              inspection={rcFocus}
+              selected={selected}
+            />
+          ) : (
+            <Education
+              key={JSON.stringify(c)}
+              c={c}
+              result={result}
+              selected={selected}
+              select={select}
+              highlight={setHighlight}
+              currentHighlight={highlight}
+            />
+          ))}
+        <section id="lessons" className="lessons">
+          <div className="section-heading">
+            <div>
+              <h2>
+                <BookOpen size={20} /> جرّب، ثم افهم
+              </h2>
+              <p>تجارب قصيرة تبني فهمًا أعمق للدوائر الكهربائية.</p>
             </div>
-            <div className="lesson-grid">
-              {["دارة التوالي", "دارة التوازي", "إضاءة مصباح"].map(
-                (name, n) => (
-                  <button
-                    className={lesson === n ? "lesson current" : "lesson"}
-                    key={name}
-                    onClick={() => load(n)}
-                  >
-                    <span className="lesson-number">0{n + 1}</span>
-                    <div>
-                      <small>تجربة {n === 0 ? "أساسية" : "تطبيقية"} · DC</small>
-                      <h3>{name}</h3>
-                      <p>
-                        {n === 0
-                          ? "احسب التيار عند 12V ومقاومتين 100Ω و200Ω."
-                          : n === 1
-                            ? "قارن تياري الفرعين. لماذا يبقى الجهد نفسه؟"
-                            : "غيّر مقاومة المصباح ولاحظ أثرها على القدرة."}
-                      </p>
-                    </div>
-                    <ChevronLeft size={18} />
-                  </button>
-                ),
-              )}
-            </div>
-            <p className="exercise">
-              هدف التجربة:{" "}
-              {lesson === 0
-                ? "تحقق من تيار 0.04A وجهدين 4V و8V."
-                : lesson === 1
-                  ? "تحقق من 0.12A و0.06A، وتيار كلي 0.18A."
-                  : "عند 60Ω، هل تحصل على قدرة مصباح 0.3375W؟"}{" "}
-              تحميل تجربة يستبدل الدارة الحالية؛ احفظ عملك أولًا.
-            </p>
-          </section>
-        )}
+            <span>08 تجارب تفاعلية</span>
+          </div>
+          <div className="lesson-grid">
+            {["دارة التوالي", "دارة التوازي", "إضاءة مصباح"].map((name, n) => (
+              <button
+                className={lesson === n ? "lesson current" : "lesson"}
+                key={name}
+                onClick={() => load(n)}
+              >
+                <span className="lesson-number">0{n + 1}</span>
+                <div>
+                  <small>تجربة {n === 0 ? "أساسية" : "تطبيقية"} · DC</small>
+                  <h3>{name}</h3>
+                  <p>
+                    {n === 0
+                      ? "احسب التيار عند 12V ومقاومتين 100Ω و200Ω."
+                      : n === 1
+                        ? "قارن تياري الفرعين. لماذا يبقى الجهد نفسه؟"
+                        : "غيّر مقاومة المصباح ولاحظ أثرها على القدرة."}
+                  </p>
+                </div>
+                <ChevronLeft size={18} />
+              </button>
+            ))}
+          </div>
+          <div className="lesson-grid">
+            {[
+              "شحن مكثف غير مشحون",
+              "تفريغ عبر مقاومة",
+              "تأثير زيادة المقاومة",
+              "تأثير زيادة السعة",
+              "مقارنة التحليل والتكامل العددي",
+            ].map((name, i) => (
+              <button
+                key={name}
+                className="lesson"
+                onClick={() => loadRC(rcExample(i), i === 4)}
+              >
+                <span className="lesson-number">0{i + 4}</span>
+                <div>
+                  <small>استجابة زمنية RC</small>
+                  <h3>{name}</h3>
+                  <p>
+                    تحميل الدارة يختار التحليل الزمني تلقائيًا. احفظ عملك أولًا.
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="exercise">
+            هدف التجربة:{" "}
+            {lesson === 0
+              ? "تحقق من تيار 0.04A وجهدين 4V و8V."
+              : lesson === 1
+                ? "تحقق من 0.12A و0.06A، وتيار كلي 0.18A."
+                : "عند 60Ω، هل تحصل على قدرة مصباح 0.3375W؟"}{" "}
+            تحميل تجربة يستبدل الدارة الحالية؛ احفظ عملك أولًا.
+          </p>
+        </section>
+        <div className="legacy-saves">
+          <span>استرجاع حفظ سابق:</span>
+          {[
+            ["electrolab", "دارة DC السابقة"],
+            ["electrolab-rc", "دارة RC السابقة"],
+          ].map(([key, label]) => (
+            <button
+              className="outline"
+              key={key}
+              onClick={() => {
+                const raw = localStorage.getItem(key);
+                raw ? restore(raw) : setNotice("لا يوجد حفظ سابق لهذا النوع");
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <footer>
           <span>
             ElectroLab DZ <span> / </span> صُمّم لفضولك الهندسي.

@@ -345,3 +345,4 @@ test("academic unsupported operations explain limitations instead of fabricating
 
 // RC shares the same test runner so CI validates both laboratories.
 import "./rc.test.ts";
+import "./unified.test.ts";

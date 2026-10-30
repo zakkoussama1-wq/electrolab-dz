@@ -1670,3 +1670,124 @@ nav button.active {
     padding: 10px;
   }
 }
+.classification {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 17px;
+  margin-bottom: 20px;
+  font-size: 12px;
+}
+.classification strong {
+  color: var(--accent);
+  white-space: nowrap;
+}
+.classification span {
+  color: var(--muted);
+  line-height: 1.8;
+}
+.unified-mode {
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.unified-mode > span {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 12px;
+}
+.legacy-saves {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.legacy-saves .outline {
+  flex: 0 0 auto;
+}
+.curve-energy {
+  stroke: #f1989a;
+}
+.rc-graphs .rc-chart:last-child:nth-child(odd) {
+  grid-column: 1/-1;
+}
+.rc-inspection h2 {
+  font-size: 18px;
+}
+.step-progress {
+  flex-wrap: wrap;
+}
+.exam-writing {
+  display: block;
+  margin: 15px 0;
+}
+.exam-writing > input {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--canvas);
+  color: var(--text);
+}
+.unified-exam > label {
+  font-size: 12px;
+}
+.unified-exam > p {
+  font-size: 13px;
+  line-height: 2;
+}
+.unified-exam .outline {
+  margin: 8px 5px;
+}
+.rc-context {
+  margin: 18px 0;
+}
+@media (max-width: 720px) {
+  .classification {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .unified-mode > span {
+    width: 100%;
+    margin-right: 3px;
+  }
+  .rc-graphs .rc-chart:last-child {
+    grid-column: auto;
+  }
+  .unified-mode {
+    flex-wrap: wrap;
+  }
+  .step-progress {
+    gap: 5px;
+  }
+  .step-progress button {
+    width: 26px;
+    height: 26px;
+  }
+  .unified-exam {
+    padding: 13px;
+  }
+}
+@media print {
+  .classification,
+  .unified-mode,
+  .legacy-saves,
+  .unified-exam,
+  .rc-inspection {
+    display: none !important;
+  }
+}
+.unified-mode > .outline {
+  flex: 0 0 auto;
+  margin-right: auto;
+}
