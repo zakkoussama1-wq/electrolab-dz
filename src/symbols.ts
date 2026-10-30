@@ -16,11 +16,11 @@ export function symbols(c: Circuit) {
   const links: SymbolLink[] = [];
   const t = topology(c);
   c.parts.forEach((p, i) => {
-    for (const letter of ["I", "V", "R", "P"])
+    for (const letter of ["I", "V", "R", "P", "C", "Q"])
       links.push({
         key: `${letter}${i + 1}`,
         tex: `${letter}_{${i + 1}}`,
-        label: `${{ I: "تيار", V: "جهد", R: "مقاومة", P: "قدرة" }[letter]} العنصر ${i + 1}`,
+        label: `${{ I: "تيار", V: "جهد", R: "مقاومة", P: "قدرة", C: "سعة", Q: "شحنة" }[letter]} العنصر ${i + 1}`,
         focus: { parts: [p.id], terminals: [] },
       });
   });
@@ -50,8 +50,24 @@ export const numberTex = (v: number): string => {
   const [m, e] = s.split("e");
   return `${m}\\times10^{${Number(e)}}`;
 };
-export const plainTex = (tex: string) =>
-  tex.replace(
-    /\\htmlData\{symbol=[A-Za-z0-9]+\}\{([A-Z]_\{[A-Za-z0-9]+\})\}/g,
-    "$1",
-  );
+export function plainTex(tex: string): string {
+  const pattern = /\\htmlData\{symbol=[A-Za-z0-9]+\}\{/g;
+  let output = "",
+    cursor = 0,
+    match: RegExpExecArray | null;
+  while ((match = pattern.exec(tex))) {
+    let end = pattern.lastIndex,
+      depth = 1;
+    for (; end < tex.length && depth; end++) {
+      if (tex[end] === "{") depth++;
+      else if (tex[end] === "}") depth--;
+    }
+    if (depth) break;
+    output +=
+      tex.slice(cursor, match.index) +
+      plainTex(tex.slice(pattern.lastIndex, end - 1));
+    cursor = end;
+    pattern.lastIndex = end;
+  }
+  return output + tex.slice(cursor);
+}

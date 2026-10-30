@@ -1,5 +1,11 @@
 export type Kind =
-  "battery" | "resistor" | "lamp" | "switch" | "ammeter" | "voltmeter";
+  | "battery"
+  | "resistor"
+  | "lamp"
+  | "switch"
+  | "ammeter"
+  | "voltmeter"
+  | "capacitor";
 export type Part = {
   id: string;
   kind: Kind;
@@ -10,6 +16,8 @@ export type Part = {
   closed: boolean;
   voltageRef?: 1 | -1;
   currentRef?: 1 | -1;
+  initialVoltage?: number;
+  capUnit?: "F" | "mF" | "µF" | "nF";
 };
 export type Wire = { id: string; a: string; b: string };
 export type Circuit = { parts: Part[]; wires: Wire[] };
@@ -20,9 +28,16 @@ export type Result = {
   values: Record<string, { voltage: number; current: number; power: number }>;
 };
 export const terminal = (id: string, n: number) => `${id}:${n}`;
-export function solve(c: Circuit): Result {
+export function solve(
+  c: Circuit,
+  sourceValues: Record<string, number> = {},
+): Result {
   const values: Result["values"] = {};
   const fail = (error: string): Result => ({ error, values: {} });
+  if (c.parts.some((p) => p.kind === "capacitor"))
+    return fail(
+      "المكثف عنصر زمني. استخدم مختبر RC لتحليله، ولا يُعامل كمقاومة في محرك DC.",
+    );
   if (!c.parts.some((p) => p.kind === "battery"))
     return fail("لا يوجد مصدر جهد. أضف بطارية وأوصل قطبيها بالدارة.");
   if (c.parts.some((p) => !Number.isFinite(p.value) || p.value <= 0))
@@ -102,7 +117,7 @@ export function solve(c: Circuit): Result {
       add(b, k, -1);
       add(k, a, 1);
       add(k, b, -1);
-      A[k][size] = p.kind === "battery" ? p.value : 0;
+      A[k][size] = p.kind === "battery" ? (sourceValues[p.id] ?? p.value) : 0;
     } else if (p.kind !== "switch") {
       const g = 1 / (p.kind === "ammeter" ? 0.001 : p.value);
       add(a, a, g);
@@ -173,6 +188,7 @@ export function solve(c: Circuit): Result {
   };
 }
 export const labels: Record<Kind, string> = {
+  capacitor: "مكثف",
   battery: "بطارية",
   resistor: "مقاومة",
   lamp: "مصباح",

@@ -342,3 +342,6 @@ test("academic unsupported operations explain limitations instead of fabricating
     }).reason,
   );
 });
+
+// RC shares the same test runner so CI validates both laboratories.
+import "./rc.test.ts";

@@ -1393,3 +1393,280 @@ button:disabled {
     stroke: none;
   }
 }
+.rc-lab {
+  margin: 30px 0;
+}
+.rc-tabs,
+.rc-controls,
+.rc-cursor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rc-tabs {
+  border: 1px solid var(--line);
+  padding: 4px;
+  border-radius: 9px;
+}
+.rc-tabs button {
+  padding: 8px 13px;
+}
+.rc-tabs .active {
+  color: var(--accent);
+  background: #41dfb51a;
+}
+.rc-controls {
+  padding: 17px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 18px 0;
+}
+.rc-controls .run {
+  padding: 10px 18px;
+  background: var(--accent);
+  color: var(--bg);
+}
+.rc-controls > span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.rc-controls label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+}
+.rc-readings {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.rc-readings > div {
+  padding: 17px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.rc-readings small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.rc-readings strong {
+  display: block;
+  font: 20px monospace;
+  margin-top: 12px;
+}
+.rc-graphs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 18px 0;
+}
+.rc-chart {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 15px;
+}
+.rc-chart svg {
+  width: 100%;
+  height: auto;
+  direction: ltr;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.rc-chart text {
+  font: 9px monospace;
+  fill: var(--muted);
+}
+.rc-chart .panel-title strong {
+  font: 13px monospace;
+  color: var(--accent);
+}
+.chart-axis {
+  fill: none;
+  stroke: var(--muted);
+}
+.chart-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 3 6;
+}
+.chart-curve {
+  fill: none;
+  stroke: #64c3f1;
+  stroke-width: 2.4;
+}
+.curve-current {
+  stroke: #f2c47b;
+}
+.curve-charge {
+  stroke: #c49cf1;
+}
+.curve-resistorVoltage {
+  stroke: #75d6b5;
+}
+.tau-line {
+  stroke: #a5a075;
+  stroke-dasharray: 4 4;
+}
+.cursor-line {
+  stroke: #7b8d9c;
+  stroke-dasharray: 3 4;
+}
+.chart-point {
+  fill: var(--text);
+}
+.numerical-curve {
+  fill: none;
+  stroke: #efbb67;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.rc-cursor {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.rc-cursor label:first-child {
+  flex: 1;
+  min-width: 200px;
+}
+.rc-cursor input[type="range"] {
+  display: block;
+  width: 100%;
+  accent-color: var(--accent);
+  margin-top: 12px;
+}
+.rc-cursor label {
+  font-size: 12px;
+}
+.rc-teaching {
+  margin: 22px 0;
+}
+.rc-teaching .math-display {
+  font-size: 1.2rem;
+}
+.rc-teaching > p {
+  font-size: 13px;
+  line-height: 2;
+}
+.rc-exam {
+  padding: 20px;
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 10px;
+}
+.exam-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin: 16px 0;
+}
+.exam-inputs label {
+  font-size: 12px;
+}
+.exam-inputs input {
+  width: 100%;
+  padding: 10px;
+  display: block;
+  margin: 8px 0;
+  background: var(--canvas);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  direction: ltr;
+}
+.correct-answer {
+  color: var(--accent);
+}
+.wrong-answer {
+  color: #f4b28b;
+}
+.rc-experiments {
+  margin-top: 25px;
+}
+.part-icon.capacitor {
+  color: #b59be8;
+}
+.inspector .math-display {
+  font-size: 0.95rem;
+}
+.inspector .formula-block {
+  padding: 8px 4px 20px;
+}
+nav button.active {
+  border-bottom: 2px solid var(--accent);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  padding: 0 15px;
+}
+@media (max-width: 720px) {
+  header nav {
+    display: flex;
+    height: auto;
+    gap: 3px;
+    font-size: 11px;
+  }
+  header nav > button:last-child {
+    display: none;
+  }
+  header nav button.active {
+    height: auto;
+    padding: 7px;
+  }
+  header .brand small {
+    display: none;
+  }
+  .brand {
+    font-size: 15px;
+    gap: 7px;
+  }
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .header-end {
+    gap: 0;
+  }
+  header {
+    padding: 0 10px;
+    gap: 7px;
+  }
+  .rc-readings {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .rc-graphs {
+    grid-template-columns: 1fr;
+  }
+  .rc-tabs {
+    margin-top: 12px;
+  }
+  .rc-lab > .section-heading {
+    flex-wrap: wrap;
+  }
+  .rc-teaching .math-display {
+    font-size: 1.02rem;
+  }
+  .exam-inputs {
+    grid-template-columns: 1fr;
+  }
+  .parts {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .rc-controls,
+  .rc-cursor {
+    padding: 12px;
+  }
+  .rc-chart {
+    padding: 10px;
+  }
+}

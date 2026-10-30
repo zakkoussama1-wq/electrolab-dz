@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Zap,
@@ -35,7 +35,10 @@ import { reading, ref, topology } from "./analysis";
 import { Glyph } from "./Glyph";
 import { nodeName } from "./symbols";
 import { MathFormula } from "./MathFormula";
+import { RCLab } from "./RCLab";
+import { rcExample, capUnits } from "./rc";
 const icons: Record<Kind, string> = {
+  capacitor: "⊣⊢",
   battery: "⊣",
   resistor: "▱",
   lamp: "⊗",
@@ -44,6 +47,11 @@ const icons: Record<Kind, string> = {
   voltmeter: "Ⓥ",
 };
 function App() {
+  const [lab, setLab] = useState<"dc" | "rc">("dc");
+  const [rcPlaying, setRCPlaying] = useState(false);
+  const [rcCommand, setRCCommand] = useState(0);
+  const [rcReset, setRCReset] = useState(0);
+  const circuits = useRef({ dc: example(), rc: rcExample() });
   const [c, setC] = useState<Circuit>(example),
     [selected, select] = useState<string>("R1"),
     [dark, setDark] = useState(true),
@@ -61,11 +69,30 @@ function App() {
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (lab === "rc" && !rcPlaying) svg.current?.pauseAnimations();
+    else svg.current?.unpauseAnimations();
+  }, [lab, rcPlaying]);
   const part = c.parts.find((p) => p.id === selected);
   const mutate = (v: Circuit) => {
     setC(v);
     setResult(null);
     setHighlight({ parts: [], terminals: [] });
+  };
+  const switchLab = (next: "dc" | "rc") => {
+    if (next === lab) return;
+    circuits.current[lab] = c;
+    setLab(next);
+    mutate(circuits.current[next]);
+    select(next === "rc" ? "C1" : "R1");
+    setPending(null);
+    setRCCommand(0);
+  };
+  const loadRC = (v: Circuit) => {
+    mutate(v);
+    setRCReset((n) => n + 1);
+    select(v.parts.find((p) => p.kind === "capacitor")?.id ?? "");
+    setPending(null);
   };
   const edit = (p: Partial<Part>) =>
     mutate({
@@ -125,7 +152,17 @@ function App() {
           x: 250 + Math.random() * 400,
           y: 160 + Math.random() * 180,
           rotation: 0,
-          value: kind === "battery" ? 12 : kind === "lamp" ? 60 : 100,
+          value:
+            kind === "capacitor"
+              ? 0.001
+              : kind === "battery"
+                ? 12
+                : kind === "lamp"
+                  ? 60
+                  : 100,
+          ...(kind === "capacitor"
+            ? { initialVoltage: 0, capUnit: "µF" as const }
+            : {}),
           closed: true,
         },
       ],
@@ -152,6 +189,9 @@ function App() {
             (k) => typeof p[k] === "number" && Number.isFinite(p[k]),
           ) ||
           p.value <= 0 ||
+          (p.initialVoltage !== undefined &&
+            !Number.isFinite(p.initialVoltage)) ||
+          (p.capUnit !== undefined && !Object.hasOwn(capUnits, p.capUnit)) ||
           (p.voltageRef !== undefined &&
             p.voltageRef !== 1 &&
             p.voltageRef !== -1) ||
@@ -175,7 +215,15 @@ function App() {
           )
         )
           throw Error();
+      const target = v.parts.some((p: Part) => p.kind === "capacitor")
+        ? "rc"
+        : "dc";
+      if (target !== lab) {
+        circuits.current[lab] = c;
+        setLab(target);
+      }
       mutate(v);
+      setRCReset((n) => n + 1);
       select("");
       setPending(null);
       setNotice("تم استرجاع الدارة بنجاح");
@@ -184,7 +232,10 @@ function App() {
     }
   };
   const save = () => {
-    localStorage.setItem("electrolab", JSON.stringify(c));
+    localStorage.setItem(
+      lab === "rc" ? "electrolab-rc" : "electrolab",
+      JSON.stringify(c),
+    );
     const a = document.createElement("a");
     a.href = URL.createObjectURL(
       new Blob([JSON.stringify(c)], { type: "application/json" }),
@@ -207,7 +258,18 @@ function App() {
           </span>
         </a>
         <nav>
-          <span className="active">المختبر</span>
+          <button
+            className={lab === "dc" ? "active" : ""}
+            onClick={() => switchLab("dc")}
+          >
+            مختبر DC
+          </button>
+          <button
+            className={lab === "rc" ? "active" : ""}
+            onClick={() => switchLab("rc")}
+          >
+            مختبر RC
+          </button>
           <button
             onClick={() =>
               document
@@ -230,7 +292,8 @@ function App() {
         <div className="intro">
           <div>
             <div className="eyebrow">
-              تعلّم بالتجربة <span> / </span> مختبر التيار المستمر
+              تعلّم بالتجربة <span> / </span>{" "}
+              {lab === "rc" ? "المقاومة والمكثف · RC" : "مختبر التيار المستمر"}
             </div>
             <h1>
               أفكارك، في دارة حيّة<span>.</span>
@@ -238,39 +301,47 @@ function App() {
             <p>ركّب. وصّل. اكتشف. مساحة آمنة لتحويل النظرية إلى تجربة.</p>
           </div>
           <div className="intro-tag">
-            <span className="dot" /> بيئة محاكاة DC{" "}
-            <small>قانون أوم · قوانين كيرشوف</small>
+            <span className="dot" /> بيئة محاكاة {lab === "rc" ? "RC" : "DC"}{" "}
+            <small>
+              {lab === "rc"
+                ? "شحن · تفريغ · استجابة زمنية"
+                : "قانون أوم · قوانين كيرشوف"}
+            </small>
           </div>
         </div>
         <div className="lab">
           <aside className="library">
             <div className="panel-title">
               <h3>مكتبة العناصر</h3>
-              <span>06</span>
+              <span>{lab === "rc" ? "07" : "06"}</span>
             </div>
             <p className="muted">اضغط لإضافة عنصر إلى المساحة</p>
             <div className="category">العناصر الأساسية</div>
             <div className="parts">
-              {(Object.keys(labels) as Kind[]).map((k) => (
-                <button className="part-card" key={k} onClick={() => add(k)}>
-                  <span className={"part-icon " + k}>{icons[k]}</span>
-                  <strong>{labels[k]}</strong>
-                  <small>
-                    {k === "battery"
-                      ? "مصدر جهد DC"
-                      : k === "resistor"
-                        ? "تحكّم في التيار"
-                        : k === "lamp"
-                          ? "حمل مقاوم ثابت"
-                          : k === "switch"
-                            ? "فتح وإغلاق الدارة"
-                            : k === "ammeter"
-                              ? "قياس التيار"
-                              : "قياس الجهد"}
-                  </small>
-                  <Plus size={12} />
-                </button>
-              ))}
+              {(Object.keys(labels) as Kind[])
+                .filter((k) => lab === "rc" || k !== "capacitor")
+                .map((k) => (
+                  <button className="part-card" key={k} onClick={() => add(k)}>
+                    <span className={"part-icon " + k}>{icons[k]}</span>
+                    <strong>{labels[k]}</strong>
+                    <small>
+                      {k === "capacitor"
+                        ? "تخزين الشحنة"
+                        : k === "battery"
+                          ? "مصدر جهد DC"
+                          : k === "resistor"
+                            ? "تحكّم في التيار"
+                            : k === "lamp"
+                              ? "حمل مقاوم ثابت"
+                              : k === "switch"
+                                ? "فتح وإغلاق الدارة"
+                                : k === "ammeter"
+                                  ? "قياس التيار"
+                                  : "قياس الجهد"}
+                    </small>
+                    <Plus size={12} />
+                  </button>
+                ))}
             </div>
             <div className="tip">
               <Zap size={17} />
@@ -298,7 +369,9 @@ function App() {
                 <button
                   title="استرجاع آخر حفظ محلي"
                   onClick={() => {
-                    const s = localStorage.getItem("electrolab");
+                    const s = localStorage.getItem(
+                      lab === "rc" ? "electrolab-rc" : "electrolab",
+                    );
                     s ? restore(s) : setNotice("لا توجد دارة محفوظة محليًا");
                   }}
                 >
@@ -308,7 +381,8 @@ function App() {
                 <button
                   className="run"
                   onClick={() => {
-                    setResult(solve(c));
+                    if (lab === "rc") setRCCommand((n) => n + 1);
+                    else setResult(solve(c));
                     setPending(null);
                   }}
                 >
@@ -322,7 +396,7 @@ function App() {
                   <span className="dot" />{" "}
                   {result ? "نتائج المحاكاة" : "جاهز للتوصيل"}
                 </span>
-                <span>DC LAB / 01</span>
+                <span>{lab === "rc" ? "RC LAB / 02" : "DC LAB / 01"}</span>
               </div>
               <div className="tools">
                 <button
@@ -587,17 +661,19 @@ function App() {
                       textAnchor="middle"
                       y="73"
                     >
-                      {p.kind === "battery"
-                        ? `${p.value} V`
-                        : p.kind === "resistor" || p.kind === "lamp"
-                          ? `${p.value} Ω`
-                          : p.kind === "switch"
-                            ? p.closed
-                              ? "مغلق"
-                              : "مفتوح"
-                            : p.kind === "ammeter"
-                              ? "0.001 Ω"
-                              : "مثالي"}
+                      {p.kind === "capacitor"
+                        ? `${Number((p.value / capUnits[p.capUnit ?? "µF"]).toPrecision(8))} ${p.capUnit ?? "µF"}`
+                        : p.kind === "battery"
+                          ? `${p.value} V`
+                          : p.kind === "resistor" || p.kind === "lamp"
+                            ? `${p.value} Ω`
+                            : p.kind === "switch"
+                              ? p.closed
+                                ? "مغلق"
+                                : "مفتوح"
+                              : p.kind === "ammeter"
+                                ? "0.001 Ω"
+                                : "مثالي"}
                     </text>
                   </g>
                 ))}
@@ -699,6 +775,60 @@ function App() {
                     />
                   </label>
                 )}
+                {part.kind === "capacitor" && (
+                  <>
+                    <label>
+                      السعة
+                      <input
+                        aria-label="سعة المكثف"
+                        type="number"
+                        min="0.000001"
+                        step="any"
+                        value={Number(
+                          (
+                            part.value / capUnits[part.capUnit ?? "µF"]
+                          ).toPrecision(10),
+                        )}
+                        onChange={(e) => {
+                          const v =
+                            Number(e.target.value) *
+                            capUnits[part.capUnit ?? "µF"];
+                          if (v > 0 && v <= 100 && Number.isFinite(v))
+                            edit({ value: v });
+                        }}
+                      />
+                      <select
+                        aria-label="وحدة السعة"
+                        value={part.capUnit ?? "µF"}
+                        onChange={(e) =>
+                          edit({ capUnit: e.target.value as Part["capUnit"] })
+                        }
+                      >
+                        {Object.keys(capUnits).map((u) => (
+                          <option key={u}>{u}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      الجهد الابتدائي (V)
+                      <input
+                        aria-label="الجهد الابتدائي"
+                        type="number"
+                        step="any"
+                        value={part.initialVoltage ?? 0}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isFinite(v) && Math.abs(v) <= 1e6)
+                            edit({ initialVoltage: v });
+                        }}
+                      />
+                    </label>
+                    <p className="muted">
+                      الجهد الابتدائي من الطرف الأول (+ في الوضع الأصلي) إلى
+                      الثاني؛ عكس مرجع العرض لا يغير الحالة الفيزيائية.
+                    </p>
+                  </>
+                )}
                 {part.kind === "switch" && (
                   <button
                     className="outline"
@@ -751,15 +881,17 @@ function App() {
                 <div className="info-box">
                   <strong>معلومة سريعة</strong>
                   <p>
-                    {part.kind === "resistor"
-                      ? "وفق قانون أوم، عند ثبات الجهد، تقل شدة التيار كلما زادت المقاومة."
-                      : part.kind === "ammeter"
-                        ? "يوصل على التوالي. نحاكي مقاومة داخلية صغيرة مقدارها 0.001 أوم."
-                        : part.kind === "voltmeter"
-                          ? "يوصل على التوازي. الجهاز مثالي ولا يسحب تيارًا."
-                          : part.kind === "lamp"
-                            ? "المصباح نموذج مقاومة ثابتة؛ لا يحاكي تغيّر المقاومة مع الحرارة."
-                            : "الطرف الأيسر هو المرجع الموجب للجهد والتيار. جرّب تغيير التوصيلات ولاحظ النتائج."}
+                    {part.kind === "capacitor"
+                      ? "المكثف يخزن شحنة وطاقة. فتح المفتاح يعزله ولا يفرغه دون مسار مقاوم."
+                      : part.kind === "resistor"
+                        ? "وفق قانون أوم، عند ثبات الجهد، تقل شدة التيار كلما زادت المقاومة."
+                        : part.kind === "ammeter"
+                          ? "يوصل على التوالي. نحاكي مقاومة داخلية صغيرة مقدارها 0.001 أوم."
+                          : part.kind === "voltmeter"
+                            ? "يوصل على التوازي. الجهاز مثالي ولا يسحب تيارًا."
+                            : part.kind === "lamp"
+                              ? "المصباح نموذج مقاومة ثابتة؛ لا يحاكي تغيّر المقاومة مع الحرارة."
+                              : "الطرف الأيسر هو المرجع الموجب للجهد والتيار. جرّب تغيير التوصيلات ولاحظ النتائج."}
                   </p>
                   <MathFormula
                     tex={
@@ -797,58 +929,74 @@ function App() {
             </div>
           </aside>
         </div>
-        <Education
-          key={JSON.stringify(c)}
-          c={c}
-          result={result}
-          selected={selected}
-          select={select}
-          highlight={setHighlight}
-          currentHighlight={highlight}
-        />
-        <section id="lessons" className="lessons">
-          <div className="section-heading">
-            <div>
-              <h2>
-                <BookOpen size={20} /> جرّب، ثم افهم
-              </h2>
-              <p>تجارب قصيرة تبني فهمًا أعمق للدوائر الكهربائية.</p>
+        {lab === "rc" ? (
+          <RCLab
+            c={c}
+            command={rcCommand}
+            resetToken={rcReset}
+            onResult={setResult}
+            onRunning={setRCPlaying}
+            highlight={setHighlight}
+            load={loadRC}
+          />
+        ) : (
+          <Education
+            key={JSON.stringify(c)}
+            c={c}
+            result={result}
+            selected={selected}
+            select={select}
+            highlight={setHighlight}
+            currentHighlight={highlight}
+          />
+        )}
+        {lab === "dc" && (
+          <section id="lessons" className="lessons">
+            <div className="section-heading">
+              <div>
+                <h2>
+                  <BookOpen size={20} /> جرّب، ثم افهم
+                </h2>
+                <p>تجارب قصيرة تبني فهمًا أعمق للدوائر الكهربائية.</p>
+              </div>
+              <span>03 تجارب تفاعلية</span>
             </div>
-            <span>03 تجارب تفاعلية</span>
-          </div>
-          <div className="lesson-grid">
-            {["دارة التوالي", "دارة التوازي", "إضاءة مصباح"].map((name, n) => (
-              <button
-                className={lesson === n ? "lesson current" : "lesson"}
-                key={name}
-                onClick={() => load(n)}
-              >
-                <span className="lesson-number">0{n + 1}</span>
-                <div>
-                  <small>تجربة {n === 0 ? "أساسية" : "تطبيقية"} · DC</small>
-                  <h3>{name}</h3>
-                  <p>
-                    {n === 0
-                      ? "احسب التيار عند 12V ومقاومتين 100Ω و200Ω."
-                      : n === 1
-                        ? "قارن تياري الفرعين. لماذا يبقى الجهد نفسه؟"
-                        : "غيّر مقاومة المصباح ولاحظ أثرها على القدرة."}
-                  </p>
-                </div>
-                <ChevronLeft size={18} />
-              </button>
-            ))}
-          </div>
-          <p className="exercise">
-            هدف التجربة:{" "}
-            {lesson === 0
-              ? "تحقق من تيار 0.04A وجهدين 4V و8V."
-              : lesson === 1
-                ? "تحقق من 0.12A و0.06A، وتيار كلي 0.18A."
-                : "عند 60Ω، هل تحصل على قدرة مصباح 0.3375W؟"}{" "}
-            تحميل تجربة يستبدل الدارة الحالية؛ احفظ عملك أولًا.
-          </p>
-        </section>
+            <div className="lesson-grid">
+              {["دارة التوالي", "دارة التوازي", "إضاءة مصباح"].map(
+                (name, n) => (
+                  <button
+                    className={lesson === n ? "lesson current" : "lesson"}
+                    key={name}
+                    onClick={() => load(n)}
+                  >
+                    <span className="lesson-number">0{n + 1}</span>
+                    <div>
+                      <small>تجربة {n === 0 ? "أساسية" : "تطبيقية"} · DC</small>
+                      <h3>{name}</h3>
+                      <p>
+                        {n === 0
+                          ? "احسب التيار عند 12V ومقاومتين 100Ω و200Ω."
+                          : n === 1
+                            ? "قارن تياري الفرعين. لماذا يبقى الجهد نفسه؟"
+                            : "غيّر مقاومة المصباح ولاحظ أثرها على القدرة."}
+                      </p>
+                    </div>
+                    <ChevronLeft size={18} />
+                  </button>
+                ),
+              )}
+            </div>
+            <p className="exercise">
+              هدف التجربة:{" "}
+              {lesson === 0
+                ? "تحقق من تيار 0.04A وجهدين 4V و8V."
+                : lesson === 1
+                  ? "تحقق من 0.12A و0.06A، وتيار كلي 0.18A."
+                  : "عند 60Ω، هل تحصل على قدرة مصباح 0.3375W؟"}{" "}
+              تحميل تجربة يستبدل الدارة الحالية؛ احفظ عملك أولًا.
+            </p>
+          </section>
+        )}
         <footer>
           <span>
             ElectroLab DZ <span> / </span> صُمّم لفضولك الهندسي.

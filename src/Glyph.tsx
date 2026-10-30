@@ -5,7 +5,9 @@ export function Glyph({ p, lit }: { p: Part; lit: boolean }) {
       className={lit ? "circuit-glyph lit" : "circuit-glyph"}
       pointerEvents="none"
     >
-      {p.kind === "resistor" ? (
+      {p.kind === "capacitor" ? (
+        <path d="M-43 0 H-7 M7 0 H43 M-7 -19 V19 M7 -19 V19" />
+      ) : p.kind === "resistor" ? (
         <>
           <path d="M-43 0 H-25 M25 0 H43" />
           <rect x="-25" y="-9" width="50" height="18" />
