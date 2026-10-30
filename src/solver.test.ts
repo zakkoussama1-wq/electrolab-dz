@@ -229,3 +229,116 @@ test("floating voltmeter reports undefined voltage with zero power", () => {
   near(r.values.V.power, 0);
   assert.ok(r.warning);
 });
+
+import katex from "katex";
+import { buildLesson, type Method } from "./lessons.ts";
+import { symbols, linked, plainTex, nodeName } from "./symbols.ts";
+function assertAcademic(
+  c: Circuit,
+  method: Method,
+  quantity: "I" | "V" | "Req" = "I",
+  selected = c.parts[1].id,
+) {
+  const r = solve(c);
+  const lesson = buildLesson(c, r, { method, quantity, selected });
+  assert.equal(lesson.reason, undefined, lesson.reason);
+  assert.equal(lesson.steps.length, 7);
+  assert.ok(lesson.steps[5].lines.some((l) => l.tex.includes("\\boxed")));
+  for (const step of lesson.steps) {
+    assert.ok(step.title);
+    for (const l of step.lines) {
+      katex.renderToString(l.tex, {
+        throwOnError: true,
+        strict: "ignore",
+        trust: (ctx) => ctx.command === "\\htmlData",
+      });
+      assert.doesNotMatch(l.tex, /Iphys|Vref|Iref|MNA|φN|R1:0/);
+      assert.doesNotMatch(plainTex(l.tex), /htmlData/);
+    }
+  }
+  near(lesson.residual!, 0);
+  return lesson;
+}
+test("academic Ohm lessons: seven steps, actual values and all reference signs", () => {
+  for (const voltageRef of [1, -1] as const)
+    for (const currentRef of [1, -1] as const) {
+      const c = example();
+      c.parts[1] = { ...c.parts[1], voltageRef, currentRef };
+      near(assertAcademic(c, "Ohm").value!, 0.04 * currentRef);
+      near(assertAcademic(c, "Ohm", "V").value!, 4 * voltageRef);
+    }
+  const c = example();
+  c.parts[0].value = 24;
+  c.parts[1].value = 200;
+  near(assertAcademic(c, "Ohm").value!, 0.06);
+});
+test("academic Kirchhoff equations respect reference signs on series and parallel networks", () => {
+  for (const c of [example(), example(1), bridge()])
+    for (const currentRef of [1, -1] as const) {
+      c.parts = c.parts.map((p, i) => ({
+        ...p,
+        currentRef,
+        voltageRef: i % 2 ? -1 : 1,
+      }));
+      for (const m of ["KCL", "KVL"] as const) {
+        near(
+          assertAcademic(c, m).value!,
+          solve(c).values[c.parts[1].id].current * currentRef,
+        );
+        near(
+          assertAcademic(c, m, "V").value!,
+          reading(c.parts[1], solve(c))!.voltage,
+        );
+      }
+    }
+});
+test("academic equivalents: series, parallel fractions, general bridge and unsupported sources", () => {
+  near(assertAcademic(example(), "Req", "Req").value!, 300);
+  near(assertAcademic(example(1), "Req", "Req").value!, 200 / 3);
+  near(assertAcademic(bridge(), "Req", "Req").value!, 1300 / 11);
+  const c = example();
+  c.parts.push(component("EXTRA", "battery", 1));
+  assert.ok(
+    buildLesson(c, solve(c), { method: "Req", quantity: "Req", selected: "R1" })
+      .reason,
+  );
+});
+test("presentation does not reveal UUIDs; symbols map back to actual circuit targets", () => {
+  const c = example();
+  const id = "a23dc123-4567-89ab-0123-ffffffffffff";
+  c.parts[1].id = id;
+  c.wires = c.wires.map((w) => ({
+    ...w,
+    a: w.a.replace("R1:", id + ":"),
+    b: w.b.replace("R1:", id + ":"),
+  }));
+  const l = assertAcademic(c, "Req", "Req", id);
+  assert.ok(
+    !JSON.stringify(l).includes(id) ||
+      l.steps.some((st) => st.focus.parts.includes(id)),
+  );
+  for (const st of l.steps) {
+    assert.ok(!st.text.includes(id));
+    for (const f of st.lines) assert.ok(!f.tex.includes(id));
+  }
+  const reg = symbols(c);
+  assert.deepEqual(reg.part(id).focus.parts, [id]);
+  assert.equal(reg.part(id).tex, "I_{2}");
+  assert.equal(plainTex(linked(reg.part(id))), "I_{2}");
+  assert.equal(nodeName(26), "AA");
+});
+test("academic unsupported operations explain limitations instead of fabricating a result", () => {
+  const c = example();
+  c.wires.pop();
+  assert.ok(
+    buildLesson(c, solve(c), { method: "KVL", quantity: "I", selected: "R1" })
+      .reason,
+  );
+  assert.ok(
+    buildLesson(example(), solve(example()), {
+      method: "Ohm",
+      quantity: "I",
+      selected: "B1",
+    }).reason,
+  );
+});

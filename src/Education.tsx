@@ -1,14 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { type Circuit, type Result, labels } from "./solver";
-import {
-  topology,
-  reading,
-  ref,
-  fmt,
-  resistance,
-  equivalent,
-  checks,
-} from "./analysis";
+import { topology, reading, fmt } from "./analysis";
+import { symbols, nodeName, type SymbolLink } from "./symbols";
+import { MathFormula } from "./MathFormula";
+import { buildLesson, type Method, type Quantity } from "./lessons";
 export type Highlight = { parts: string[]; terminals: string[] };
 type Props = {
   c: Circuit;
@@ -16,16 +11,26 @@ type Props = {
   selected: string;
   select: (id: string) => void;
   highlight: (h: Highlight) => void;
+  currentHighlight: Highlight;
 };
-export function Education({ c, result, selected, select, highlight }: Props) {
-  const [method, setMethod] = useState("auto"),
-    [quantity, setQuantity] = useState("I"),
-    [step, setStep] = useState(0);
-  const t = topology(c),
-    p = c.parts.find((p) => p.id === selected);
+export function Education({
+  c,
+  result,
+  selected,
+  select,
+  highlight,
+  currentHighlight,
+}: Props) {
+  const [method, setMethod] = useState<Method | "auto">("auto");
+  const [quantity, setQuantity] = useState<Quantity>("I");
+  const [step, setStep] = useState(0);
+  const [node, setNode] = useState("");
+  const [loop, setLoop] = useState("");
+  const t = useMemo(() => topology(c), [c]);
+  const registry = useMemo(() => symbols(c), [c]);
+  const p = c.parts.find((p) => p.id === selected);
   const valid = result && !result.error ? result : null;
-  const verification = valid ? checks(c, valid, t) : null;
-  const chosen =
+  const chosen: Method =
     method === "auto"
       ? quantity === "Req"
         ? "Req"
@@ -33,212 +38,41 @@ export function Education({ c, result, selected, select, highlight }: Props) {
           ? "Ohm"
           : "KCL"
       : method;
+  const methodNames: Record<Method, string> = {
+    Ohm: "قانون أوم",
+    KCL: "قانون كيرشوف للتيار",
+    KVL: "قانون كيرشوف للجهد",
+    Req: "المقاومة المكافئة",
+  };
+  const lesson = useMemo(
+    () =>
+      valid
+        ? buildLesson(c, valid, {
+            method: chosen,
+            quantity,
+            selected,
+            node,
+            loop,
+          })
+        : { steps: [] },
+    [c, valid, chosen, quantity, selected, node, loop],
+  );
+  const index = Math.min(step, Math.max(0, lesson.steps.length - 1));
+  useEffect(() => setStep(0), [selected, method, quantity, node, loop]);
+  useEffect(() => {
+    const focus = lesson.steps[index]?.focus;
+    if (focus) highlight(focus);
+  }, [lesson, index, highlight]);
+  const active = registry.links
+    .filter(
+      (s) =>
+        s.focus.parts.some((id) => currentHighlight.parts.includes(id)) ||
+        s.focus.terminals.some((t) => currentHighlight.terminals.includes(t)),
+    )
+    .map((s) => s.key);
+  const onSymbol = (link: SymbolLink) => highlight(link.focus);
   const name = (id: string) =>
-    `${labels[c.parts.find((p) => p.id === id)!.kind]} ${c.parts.findIndex((p) => p.id === id) + 1} (${id.slice(0, 8)})`;
-  const equation = (terms: { id: string; sign: number }[], symbol: string) =>
-    terms
-      .map((s) => `${s.sign < 0 ? "−" : "+"}${symbol}[${s.id.slice(0, 8)}]`)
-      .join(" ") + " = 0";
-  const substitution = (
-    terms: { id: string; sign: number }[],
-    kind: "current" | "voltage",
-  ) =>
-    terms
-      .map(
-        (s) =>
-          `${s.sign < 0 ? "−" : "+"}(${fmt(
-            reading(
-              c.parts.find((p) => p.id === s.id)!,
-              valid!,
-            )![kind],
-          )})`,
-      )
-      .join(" ") + " ≈ 0";
-  let steps: { title: string; text: string; formula?: string }[] = [];
-  if (valid && p && chosen === "Ohm") {
-    if (!["resistor", "lamp", "ammeter"].includes(p.kind))
-      steps = [
-        {
-          title: "هذه الطريقة لا تنطبق على العنصر",
-          text: "قانون أوم بهذه الصيغة يطبق على الفروع المقاومة. اختر مقاومة أو استخدم KCL وKVL للمصدر والمفتاح.",
-        },
-      ];
-    else {
-      const v = reading(p, valid)!,
-        s = ref(p.currentRef) * ref(p.voltageRef);
-      steps = [
-        {
-          title: "1 · لماذا قانون أوم؟",
-          text: `الفرع ${name(p.id)} مقاومي خطي. الجهد والتيار في الدارة الكاملة حُسبا أولًا بـ MNA، ونستخدم قانون أوم لاشتقاق الكمية المختارة والتحقق منها.`,
-        },
-        {
-          title: "2 · تحديد المراجع",
-          text: `مرجع الجهد ${ref(p.voltageRef) === 1 ? "من الطرف 0 إلى 1" : "من الطرف 1 إلى 0"}، ومرجع التيار ${ref(p.currentRef) === 1 ? "0 → 1" : "1 → 0"}. عند تعاكس المرجعين يجب إدخال إشارة سالبة.`,
-          formula: `Vref = (${s}) × R × Iref`,
-        },
-        {
-          title: "3 · المعادلة الرمزية",
-          text:
-            quantity === "V"
-              ? "نحسب الجهد من المقاومة والتيار."
-              : "نقسم الجهد على المقاومة مع مراعاة إشارة المراجع.",
-          formula:
-            quantity === "V"
-              ? `Vref = (${s}) × R × Iref`
-              : `Iref = (${s}) × Vref / R`,
-        },
-        {
-          title: "4 · التعويض والحساب",
-          text: `R = ${fmt(resistance(p))} Ω.`,
-          formula:
-            quantity === "V"
-              ? `Vref = (${s}) × ${fmt(resistance(p))} × (${fmt(v.current)}) = ${fmt(v.voltage)} V`
-              : `Iref = (${s}) × (${fmt(v.voltage)}) / ${fmt(resistance(p))} = ${fmt(v.current)} A`,
-        },
-        {
-          title: "5 · تفسير الإشارة والقدرة",
-          text:
-            v.current < 0
-              ? "التيار المحسوب سالب: اتجاهه الحقيقي معاكس للسهم المرجعي. عكس السهم لا يغيّر الدارة أو الطاقة."
-              : "التيار الموجب يتجه مع السهم المرجعي، والصفر يعني عدم مرور تيار.",
-          formula: `Pabsorbed = (${s}) × Vref × Iref = ${fmt(v.power)} W`,
-        },
-      ];
-    }
-  } else if (valid && chosen === "KCL")
-    steps = [
-      {
-        title: "1 · لماذا KCL؟",
-        text: "الشحنة لا تتراكم في عقدة DC. نعتبر التيارات الخارجة موجبة، والداخلة سالبة. نجمع تيارات الفروع المحسوبة بـ MNA، وليس تيارات الأسلاك المثالية غير الفريدة.",
-      },
-      ...verification!.kcl
-        .filter((n) => n.terms.length)
-        .flatMap((n) => [
-          {
-            title: `${n.id} · المعادلة الرمزية`,
-            text: "معامل كل تيار يعتمد على طرفه المتصل بالعقدة وسهمه المرجعي. اختر العقدة من تحليل البنية لإبرازها.",
-            formula: equation(n.terms, "I"),
-          },
-          {
-            title: `${n.id} · التعويض والتحقق`,
-            text: `المتبقي العددي: ${fmt(n.residual)} A. ${Math.abs(n.residual) < 1e-7 ? "يتحقق قانون كيرشوف للتيار." : "لم ينجح التحقق؛ راجع استقرار الحل."}`,
-            formula: substitution(n.terms, "current"),
-          },
-        ]),
-    ];
-  else if (valid && chosen === "KVL")
-    steps = [
-      {
-        title: "1 · لماذا KVL؟",
-        text: "مجموع هبوطات الجهد الجبرية على أي مسار مغلق يساوي صفرًا. نولد أساس حلقات مستقل من التوصيلات، ثم نربط إشارة كل جهد باتجاه اجتياز الحلقة والقطبية المختارة.",
-      },
-      ...verification!.kvl.flatMap((l) => [
-        {
-          title: `${l.id} · المعادلة الرمزية`,
-          text: "إشارة موجبة عند الاجتياز من + المرجعي إلى −، وسالبة عند العكس.",
-          formula: equation(l.terms, "V"),
-        },
-        {
-          title: `${l.id} · التعويض والتحقق`,
-          text: `المتبقي: ${fmt(l.residual)} V. ${Math.abs(l.residual) < 1e-7 ? "يتحقق قانون الجهد." : "التحقق لم ينجح."}`,
-          formula: substitution(l.terms, "voltage"),
-        },
-      ]),
-      ...(!t.loops.length
-        ? [
-            {
-              title: "لا توجد حلقة مغلقة",
-              text: "لا يمكن تطبيق KVL على مسار مفتوح. أضف مسار الرجوع أولًا.",
-            },
-          ]
-        : []),
-    ];
-  else if (valid && chosen === "Req") {
-    const eq = equivalent(c);
-    steps = [
-      {
-        title: "1 · تحديد منفذ المكافئة",
-        text: "نحسب مقاومة الحمل التي تراها البطارية الوحيدة. الأسلاك والمفاتيح المغلقة مثالية، والفولتمتر لا يحمّل الدارة. لا نستعمل معادلة توالٍ أو توازٍ إلا بعد فحص العقد.",
-      },
-      ...eq.steps.map((s, i) => ({
-        title: `${i + 2} · ${s.kind === "series" ? "اختزال توالٍ" : "اختزال توازٍ"}`,
-        text:
-          s.kind === "series"
-            ? "العقدة المشتركة لا تتفرع إلى حمل آخر، لذلك التيار نفسه يمر في العنصرين."
-            : "العنصران بين العقدتين نفسيهما، لذلك الجهد متساوٍ.",
-        formula: `R = ${s.expression}\nR = ${s.numeric} = ${fmt(s.value)} Ω`,
-      })),
-      {
-        title: "التحقق العام بمصدر اختبار",
-        text: eq.reason || "",
-        formula:
-          eq.value !== undefined
-            ? `Vtest = 1 V; Iin = ${fmt(1 / eq.value)} A; Req = Vtest / Iin = ${fmt(eq.value)} Ω`
-            : undefined,
-      },
-    ];
-  }
-  if (valid && verification && steps.length)
-    steps.push({
-      title: "التحقق من موازنة القدرة",
-      text: "نحسب القدرة الممتصة بالمراجع الفيزيائية، دون تغييرها عند قلب أسهم العرض. السالب قدرة يزوّدها المصدر. هذا التحقق ليس حساب طاقة زمنية.",
-      formula: `Σ P = ${fmt(verification.power)} W ≈ 0`,
-    });
-  if (valid && chosen === "KCL") {
-    const equations = t.nodes
-      .map((n) => {
-        const terms = t.branches
-          .filter(
-            (b) => b.active && b.a !== b.b && (b.a === n.id || b.b === n.id),
-          )
-          .map((b) => {
-            const p = c.parts.find((p) => p.id === b.id)!,
-              sign = b.a === n.id ? "+" : "−";
-            return ["resistor", "lamp", "ammeter"].includes(p.kind)
-              ? `${sign}(φ${b.a} − φ${b.b}) / ${fmt(resistance(p))}`
-              : `${sign}Iphys[${p.id.slice(0, 8)}]`;
-          });
-        return terms.length ? `${n.id}: ${terms.join(" ")} = 0` : "";
-      })
-      .filter(Boolean);
-    const constraints = c.parts
-      .filter((p) => p.kind === "battery" || (p.kind === "switch" && p.closed))
-      .map((p) => {
-        const b = t.branches.find((b) => b.id === p.id)!;
-        return `φ${b.a} − φ${b.b} = ${p.kind === "battery" ? fmt(p.value) : 0} V`;
-      });
-    steps.splice(
-      1,
-      0,
-      {
-        title: "2 · بناء نظام تحليل العقد",
-        text: "لكل فرع مقاوم نكتب Iphys = (φa − φb) / R، ونضيف تيارًا مجهولًا لكل مصدر أو مفتاح مثالي. نختار مرجع جهد واحدًا لكل جزيرة، ونحذف معادلة KCL التابعة له، ثم نحل النظام خطيًا (MNA). Iphys دائمًا من الطرف 0 إلى 1؛ Iref = sI × Iphys.",
-        formula: [...equations, ...constraints].join("\n"),
-      },
-      {
-        title: "3 · حل جهود العقد",
-        text: "جهود العقد نسبية لمرجع اختاره المحلل في كل جزيرة. فرق جهد العنصر مستقل عن هذا الاختيار. هذه نتائج حل النظام، وليست قيمًا محفوظة للتجربة.",
-        formula: t.nodes
-          .map(
-            (n) =>
-              `φ${n.id} = ${fmt(valid.terminalVoltages?.[n.terminals[0]] ?? NaN)} V`,
-          )
-          .join("\n"),
-      },
-    );
-  }
-  if (valid && p && chosen !== "Req" && steps.length > 1) {
-    const value = reading(p, valid)!;
-    steps.push({
-      title: "الكمية المطلوبة على العنصر المختار",
-      text: name(p.id),
-      formula:
-        quantity === "V"
-          ? `Vref = ${fmt(value.voltage)} V`
-          : `Iref = ${fmt(value.current)} A`,
-    });
-  }
-  const index = Math.min(step, Math.max(0, steps.length - 1));
+    `${labels[c.parts.find((p) => p.id === id)!.kind]} ${c.parts.findIndex((p) => p.id === id) + 1}`;
   return (
     <section className="education">
       <div className="section-heading">
@@ -259,22 +93,23 @@ export function Education({ c, result, selected, select, highlight }: Props) {
         <div className="analysis-card">
           <h3>العقد Nodes · {t.nodes.length}</h3>
           <p>
-            الأطراف المتصلة بسلك مثالي لها الجهد نفسه. φ جهد نسبي لمرجع كل
+            الأطراف المتصلة بسلك مثالي لها الجهد نفسه. جهود العقد نسبية لمرجع كل
             جزيرة.
           </p>
           <div className="chips">
-            {t.nodes.map((n) => (
+            {t.nodes.map((n, ni) => (
               <button
                 key={n.id}
                 onClick={() => {
                   highlight({ parts: [], terminals: n.terminals });
+                  setNode(n.id);
                   setMethod("KCL");
                   setStep(0);
                 }}
               >
-                {n.id} · {n.terminals.length} أطراف{" "}
+                العقدة {nodeName(ni)} · {n.terminals.length} أطراف{" "}
                 {valid &&
-                  `· φ=${fmt(valid.terminalVoltages?.[n.terminals[0]] ?? NaN)} V`}
+                  `· الجهد ${fmt(valid.terminalVoltages?.[n.terminals[0]] ?? NaN)} فولت`}
               </button>
             ))}
           </div>
@@ -304,16 +139,17 @@ export function Education({ c, result, selected, select, highlight }: Props) {
           <h3>الحلقات المستقلة Loops · {t.loops.length}</h3>
           <p>أساس حلقات من شجرة امتداد، وليس استخراج Meshes مستوية.</p>
           <div className="chips">
-            {t.loops.map((l) => (
+            {t.loops.map((l, li) => (
               <button
                 key={l.id}
                 onClick={() => {
                   highlight({ parts: l.steps.map((s) => s.id), terminals: [] });
+                  setLoop(l.id);
                   setMethod("KVL");
                   setStep(0);
                 }}
               >
-                {l.id} · {l.steps.length} فروع
+                الحلقة {li + 1} · {l.steps.length} فروع
               </button>
             ))}
           </div>
@@ -335,8 +171,12 @@ export function Education({ c, result, selected, select, highlight }: Props) {
             <thead>
               <tr>
                 <th>العنصر</th>
-                <th>Vref (V)</th>
-                <th>Iref (A)</th>
+                <th>
+                  الجهد <i>V</i> (V)
+                </th>
+                <th>
+                  التيار <i>I</i> (A)
+                </th>
                 <th>القدرة الممتصة (W)</th>
                 <th>تفسير التيار</th>
               </tr>
@@ -378,7 +218,7 @@ export function Education({ c, result, selected, select, highlight }: Props) {
         <h2>حل الدارة خطوة بخطوة</h2>
         <p>
           اختر عنصرًا من الرسم أو الجدول. المعادلات تشتق من التوصيلات والقيم
-          الحالية؛ الحساب العام بـ MNA ثم شرح القانون والتحقق منه.
+          الحالية، وتُراجع بقوانين حفظ التيار والجهد والقدرة.
         </p>
         <div className="teaching-controls">
           <label>
@@ -387,7 +227,7 @@ export function Education({ c, result, selected, select, highlight }: Props) {
               aria-label="الكمية المطلوبة"
               value={quantity}
               onChange={(e) => {
-                setQuantity(e.target.value);
+                setQuantity(e.target.value as Quantity);
                 setMethod("auto");
                 setStep(0);
               }}
@@ -403,19 +243,63 @@ export function Education({ c, result, selected, select, highlight }: Props) {
               aria-label="طريقة الحل"
               value={method}
               onChange={(e) => {
-                setMethod(e.target.value);
+                setMethod(e.target.value as Method | "auto");
                 setStep(0);
               }}
             >
               <option value="auto">اقتراح الطريقة المناسبة</option>
-              <option value="Ohm">قانون أوم</option>
-              <option value="KCL">كيرشوف للتيار KCL</option>
-              <option value="KVL">كيرشوف للجهد KVL</option>
+              <option value="Ohm">قانون أوم — Ohm</option>
+              <option value="KCL">كيرشوف للتيار — Loi des nœuds</option>
+              <option value="KVL">كيرشوف للجهد — Loi des mailles</option>
               <option value="Req">المقاومة المكافئة</option>
             </select>
           </label>
           <span>
-            الطريقة: {chosen} · {p ? name(p.id) : "اختر عنصرًا لقانون أوم"}
+            الطريقة: {methodNames[chosen]} ·{" "}
+            {p ? name(p.id) : "اختر عنصرًا لقانون أوم"}
+          </span>
+          {chosen === "KCL" && (
+            <label>
+              العقدة
+              <select
+                aria-label="العقدة"
+                value={node}
+                onChange={(e) => setNode(e.target.value)}
+              >
+                <option value="">عقدة العنصر تلقائيًا</option>
+                {t.nodes.map((n, i) => (
+                  <option key={n.id} value={n.id}>
+                    العقدة {nodeName(i)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {chosen === "KVL" && (
+            <label>
+              الحلقة
+              <select
+                aria-label="الحلقة"
+                value={loop}
+                onChange={(e) => setLoop(e.target.value)}
+              >
+                <option value="">حلقة العنصر تلقائيًا</option>
+                {t.loops.map((l, i) => (
+                  <option key={l.id} value={l.id}>
+                    الحلقة {i + 1}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        <div className="report-actions">
+          <button className="outline" onClick={() => window.print()}>
+            طباعة الحل / حفظ PDF
+          </button>
+          <span>
+            اضغط رمزًا رياضيًا لإبراز ما يمثله في الدارة، أو حدّده في الرسم
+            لإضاءته في المعادلة.
           </span>
         </div>
         {!valid ? (
@@ -423,22 +307,56 @@ export function Education({ c, result, selected, select, highlight }: Props) {
             شغّل محاكاة صالحة لبدء الشرح. عند وجود خطأ تُعرض أسبابه بدل نتيجة
             تعليمية غير صحيحة.
           </p>
-        ) : steps.length ? (
+        ) : lesson.steps.length ? (
           <div className="step" aria-live="polite">
-            <h3>{steps[index].title}</h3>
-            <p>{steps[index].text}</p>
-            {steps[index].formula && (
-              <pre dir="ltr">{steps[index].formula}</pre>
-            )}
+            <div className="step-progress" aria-label="مراحل الحل">
+              {lesson.steps.map((st, i) => (
+                <button
+                  key={st.title}
+                  className={i === index ? "current-step" : ""}
+                  aria-current={i === index ? "step" : undefined}
+                  onClick={() => setStep(i)}
+                  aria-label={st.title}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+            <h3>{lesson.steps[index].title}</h3>
+            <p>{lesson.steps[index].text}</p>
+            {lesson.steps[index].lines.map((line, i) => (
+              <div key={i}>
+                {line.caption && (
+                  <p className="equation-caption">{line.caption}</p>
+                )}
+                <MathFormula
+                  tex={line.tex}
+                  links={registry.links}
+                  active={active}
+                  onSymbol={onSymbol}
+                />
+              </div>
+            ))}
+            <div className="print-solution">
+              {lesson.steps.map((st, i) => (
+                <article key={i}>
+                  <h3>{st.title}</h3>
+                  <p>{st.text}</p>
+                  {st.lines.map((line, j) => (
+                    <MathFormula key={j} tex={line.tex} />
+                  ))}
+                </article>
+              ))}
+            </div>
             <div className="step-navigation">
               <button disabled={index === 0} onClick={() => setStep(index - 1)}>
                 السابق
               </button>
               <span>
-                {index + 1} / {steps.length}
+                {index + 1} / {lesson.steps.length}
               </span>
               <button
-                disabled={index === steps.length - 1}
+                disabled={index === lesson.steps.length - 1}
                 onClick={() => setStep(index + 1)}
               >
                 الخطوة التالية
@@ -446,12 +364,12 @@ export function Education({ c, result, selected, select, highlight }: Props) {
             </div>
           </div>
         ) : (
-          <p>اختر عنصرًا مقاومًا لشرح قانون أوم.</p>
+          <p className="message">{lesson.reason || "اختر عنصرًا لبدء الحل."}</p>
         )}
       </div>
       <p className="scope-note">
-        هذه المرحلة: أوم، KCL، KVL، اختزال توالٍ/توازٍ ومكافئة مصدر اختبار. لا
-        دعم تعليمي بعد للتراكب وميلمان وكينيلي وثيفنن ونورتن أو وضع الامتحان.
+        هذه المرحلة: أوم، قانونا كيرشوف، اختزال توالٍ/توازٍ ومكافئة مصدر اختبار.
+        لا دعم تعليمي بعد للتراكب وميلمان وكينيلي وثيفنن ونورتن أو وضع الامتحان.
         ملفات PDF الجامعية لم تُرفق بعد.
       </p>
     </section>

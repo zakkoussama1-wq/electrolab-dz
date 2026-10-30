@@ -109,7 +109,16 @@ export function topology(c: Circuit): Topology {
     shorted: branches.filter((b) => b.a === b.b).map((b) => b.id),
   };
 }
+export type ResistanceExpression =
+  | { kind: "element"; id: string }
+  | {
+      kind: "series" | "parallel";
+      left: ResistanceExpression;
+      right: ResistanceExpression;
+    };
 export type Reduction = {
+  tree: ResistanceExpression;
+  operands: [number, number];
   kind: "series" | "parallel";
   expression: string;
   numeric: string;
@@ -149,6 +158,7 @@ export function equivalent(c: Circuit): {
     r: number;
     expression: string;
     members: string[];
+    tree: ResistanceExpression;
   };
   let edges: E[] = c.parts
     .filter((p) => ["resistor", "lamp", "ammeter"].includes(p.kind))
@@ -157,6 +167,7 @@ export function equivalent(c: Circuit): {
       b: root(t.nodeOf[terminal(p.id, 1)]),
       r: resistance(p),
       expression: p.id,
+      tree: { kind: "element" as const, id: p.id },
       members: [p.id],
     }))
     .filter((e) => e.a !== e.b);
@@ -171,8 +182,15 @@ export function equivalent(c: Circuit): {
           const r = 1 / (1 / x.r + 1 / y.r),
             expression = `(1/(${x.expression}) + 1/(${y.expression}))⁻¹`;
           const members = [...x.members, ...y.members];
+          const tree: ResistanceExpression = {
+            kind: "parallel",
+            left: x.tree,
+            right: y.tree,
+          };
           steps.push({
             kind: "parallel",
+            tree,
+            operands: [x.r, y.r],
             expression,
             numeric: `(1/${fmt(x.r)} + 1/${fmt(y.r)})⁻¹`,
             value: r,
@@ -180,7 +198,7 @@ export function equivalent(c: Circuit): {
           });
           edges = edges
             .filter((_, k) => k !== i && k !== j)
-            .concat({ ...x, r, expression, members });
+            .concat({ ...x, r, expression, members, tree });
           changed = true;
           break outer;
         }
@@ -194,8 +212,15 @@ export function equivalent(c: Circuit): {
       const members = [...x.members, ...y.members],
         expression = `(${x.expression} + ${y.expression})`,
         r = x.r + y.r;
+      const tree: ResistanceExpression = {
+        kind: "series",
+        left: x.tree,
+        right: y.tree,
+      };
       steps.push({
         kind: "series",
+        tree,
+        operands: [x.r, y.r],
         expression,
         numeric: `${fmt(x.r)} + ${fmt(y.r)}`,
         value: r,
@@ -209,6 +234,7 @@ export function equivalent(c: Circuit): {
           r,
           expression,
           members,
+          tree,
         });
       changed = true;
       break;

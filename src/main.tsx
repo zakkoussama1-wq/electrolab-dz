@@ -33,6 +33,8 @@ import "./style.css";
 import { Education, type Highlight } from "./Education";
 import { reading, ref, topology } from "./analysis";
 import { Glyph } from "./Glyph";
+import { nodeName } from "./symbols";
+import { MathFormula } from "./MathFormula";
 const icons: Record<Kind, string> = {
   battery: "⊣",
   resistor: "▱",
@@ -427,6 +429,7 @@ function App() {
                         onPointerDown={(e) => {
                           e.stopPropagation();
                           select(p.id);
+                          setHighlight({ parts: [p.id], terminals: [] });
                           if (mode) return;
                           const v = point(e);
                           drag.current = {
@@ -462,7 +465,10 @@ function App() {
                           }
                         />
                         <text textAnchor="middle" y="-52">
-                          I{i + 1}
+                          I
+                          <tspan baselineShift="sub" fontSize="9">
+                            {i + 1}
+                          </tspan>
                         </text>
                         <rect
                           x="-35"
@@ -546,8 +552,35 @@ function App() {
                     </g>
                     <text className="component-name" textAnchor="middle" y="54">
                       {labels[p.kind]} {i + 1} ·{" "}
-                      {structure.nodeOf[terminal(p.id, 0)]} /{" "}
-                      {structure.nodeOf[terminal(p.id, 1)]}
+                      {[0, 1].map((n, ni) => {
+                        const id = structure.nodeOf[terminal(p.id, n)],
+                          node = structure.nodes.find((x) => x.id === id)!;
+                        return (
+                          <tspan
+                            key={n}
+                            className="node-label"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`إبراز العقدة ${nodeName(structure.nodes.indexOf(node))}`}
+                            onClick={() =>
+                              setHighlight({
+                                parts: [],
+                                terminals: node.terminals,
+                              })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                setHighlight({
+                                  parts: [],
+                                  terminals: node.terminals,
+                                });
+                            }}
+                          >
+                            {ni ? " – " : ""}
+                            {nodeName(structure.nodes.indexOf(node))}
+                          </tspan>
+                        );
+                      })}
                     </text>
                     <text
                       className="component-value"
@@ -728,7 +761,13 @@ function App() {
                             ? "المصباح نموذج مقاومة ثابتة؛ لا يحاكي تغيّر المقاومة مع الحرارة."
                             : "الطرف الأيسر هو المرجع الموجب للجهد والتيار. جرّب تغيير التوصيلات ولاحظ النتائج."}
                   </p>
-                  <code>V = I × R</code>
+                  <MathFormula
+                    tex={
+                      ["resistor", "lamp", "ammeter"].includes(part.kind)
+                        ? `V_{${c.parts.indexOf(part) + 1}}=${ref(part.currentRef) * ref(part.voltageRef) < 0 ? "-" : ""}R_{${c.parts.indexOf(part) + 1}} I_{${c.parts.indexOf(part) + 1}}`
+                        : `P_{${c.parts.indexOf(part) + 1}}=${ref(part.currentRef) * ref(part.voltageRef) < 0 ? "-" : ""}V_{${c.parts.indexOf(part) + 1}} I_{${c.parts.indexOf(part) + 1}}`
+                    }
+                  />
                 </div>
               </>
             ) : (
@@ -759,12 +798,13 @@ function App() {
           </aside>
         </div>
         <Education
-          key={JSON.stringify(c) + selected}
+          key={JSON.stringify(c)}
           c={c}
           result={result}
           selected={selected}
           select={select}
           highlight={setHighlight}
+          currentHighlight={highlight}
         />
         <section id="lessons" className="lessons">
           <div className="section-heading">

@@ -1159,3 +1159,237 @@ button:disabled {
 .reference-pole:hover {
   filter: brightness(1.4);
 }
+/* Academic mathematical presentation: LTR equations within the RTL lesson. */
+.formula-block {
+  position: relative;
+  margin: 15px 0;
+  padding: 18px 12px 32px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  break-inside: avoid;
+}
+.math-display {
+  direction: ltr;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 5px 2px;
+  color: var(--text);
+  font-size: 1.08rem;
+  user-select: text;
+}
+.math-display .katex-display {
+  margin: 0.3em 0;
+}
+.math-display [data-symbol] {
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+.math-display [data-symbol]:hover,
+.math-display [data-symbol]:focus-visible {
+  background: #41dfb52b;
+  outline: 1px solid var(--accent);
+}
+.math-display [data-symbol].symbol-active {
+  color: var(--accent);
+  background: #41dfb51a;
+}
+.copy-equation {
+  position: absolute;
+  bottom: 5px;
+  left: 10px;
+  color: var(--muted);
+  font-size: 10px;
+  padding: 4px 8px;
+}
+.step-progress {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 20px;
+  direction: rtl;
+}
+.step-progress button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+}
+.step-progress button.current-step {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 12px 0;
+}
+.report-actions .outline {
+  flex: 0 0 auto;
+}
+.equation-caption {
+  color: var(--muted);
+  font-size: 12px;
+}
+.print-solution {
+  display: none;
+}
+.node-label {
+  cursor: pointer;
+  fill: #bda0e5;
+}
+.node-label:hover {
+  fill: var(--accent);
+}
+@media (max-width: 720px) {
+  .math-display {
+    font-size: 0.92rem;
+    text-align: left;
+  }
+  .math-display .katex-display > .katex {
+    text-align: left;
+  }
+  .formula-block {
+    padding: 13px 7px 30px;
+  }
+  .teaching-controls select {
+    min-width: 0;
+    max-width: 75%;
+  }
+  .step {
+    padding: 13px;
+  }
+  .step-progress {
+    gap: 6px;
+  }
+  .step-progress button {
+    width: 28px;
+    height: 28px;
+  }
+  .report-actions {
+    line-height: 1.8;
+  }
+}
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  .app,
+  .app.light {
+    --bg: #fff;
+    --panel: #fff;
+    --canvas: #fff;
+    --line: #bbb;
+    --text: #111;
+    --muted: #444;
+    --accent: #075a44;
+    background: #fff;
+    color: #111;
+  }
+  header,
+  .intro,
+  .library,
+  .inspector,
+  .toolbar,
+  .canvas-top,
+  .tools,
+  .canvas-bottom,
+  .results,
+  .analysis-grid,
+  .topology-note,
+  .all-readings,
+  .section-heading,
+  .lessons,
+  footer,
+  .toast,
+  .teaching-controls,
+  .report-actions,
+  .step-progress,
+  .step-navigation,
+  .copy-equation,
+  .scope-note,
+  .teaching > .step > h3,
+  .teaching > .step > p,
+  .teaching > .step > .formula-block,
+  .teaching > .step > div:not(.print-solution) {
+    display: none !important;
+  }
+  main {
+    padding: 0;
+  }
+  .lab {
+    display: block;
+  }
+  .workspace {
+    border: 0;
+  }
+  .canvas {
+    height: 260px;
+    background: #fff;
+    print-color-adjust: exact;
+  }
+  .canvas svg {
+    height: 100%;
+  }
+  .education {
+    margin: 0;
+  }
+  .teaching,
+  .step {
+    padding: 0;
+    border: 0;
+    background: #fff;
+  }
+  .print-solution {
+    display: block;
+  }
+  .print-solution article {
+    break-inside: avoid;
+    margin: 22px 0;
+  }
+  .math-display {
+    overflow: visible;
+    font-size: 12pt;
+  }
+  .formula-block {
+    padding: 10px;
+    margin: 8px 0;
+  }
+  .math-display [data-symbol] {
+    background: none !important;
+    color: #111 !important;
+  }
+  .current-particle {
+    display: none;
+  }
+  .component,
+  .terminal circle {
+    fill: #fff;
+    stroke: #555;
+  }
+  .wire path {
+    stroke: #555;
+  }
+  .component-name {
+    fill: #111;
+  }
+  .reference-current,
+  .reference-pole,
+  .circuit-glyph {
+    stroke: #333;
+    fill: none;
+  }
+  .circuit-glyph text,
+  .reference-current text,
+  .reference-pole {
+    fill: #111;
+    stroke: none;
+  }
+}
