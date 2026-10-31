@@ -154,7 +154,15 @@ test("RC unsupported topologies and DC separation are explicit", () => {
       { ...c.parts.find((p) => p.kind === "capacitor")!, id: "C2" },
     ],
   };
+  const snapshot = JSON.stringify(multi);
   assert.match(analyzeRC(multi).error!, /واحد/);
+  assert.equal(analyzeRC(multi).model, undefined);
+  const triple = { ...multi, parts: [...multi.parts, { ...multi.parts.at(-1)!, id: "C3" }] };
+  assert.equal(analyzeRC(triple).model, undefined);
+  assert.match(analyzeRC(triple).error!, /غير متاحة/);
+  assert.equal(JSON.stringify(multi), snapshot);
+  const recovered = { ...multi, parts: multi.parts.filter(p => p.id !== "C2") };
+  near(model(recovered).tau, model(c).tau);
   const shorted = {
     ...c,
     wires: [...c.wires, { id: "short", a: "C1:0", b: "C1:1" }],

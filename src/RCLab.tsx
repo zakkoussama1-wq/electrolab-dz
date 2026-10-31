@@ -403,8 +403,10 @@ export function RCLab({
 }: Props) {
   const signature = rcSignature(c),
     base = rcSignature(c, false);
-  const [analysis, setAnalysis] = useState(() => analyzeRC(c)),
-    [origin, setOrigin] = useState(
+  // The model must match the circuit in this render. Effect-delayed analysis
+  // leaves new/deleted parts paired with old readings and can crash RCContext.
+  const analysis = useMemo(() => analyzeRC(c), [signature]);
+  const [origin, setOrigin] = useState(
       () => c.parts.find((p) => p.kind === "capacitor")?.initialVoltage ?? 0,
     ),
     [time, setTime] = useState(0),
@@ -428,7 +430,7 @@ export function RCLab({
   useEffect(() => {
     const old = previous.current;
     if (old.signature === signature && old.resetToken === resetToken) return;
-    const next = analyzeRC(c);
+    const next = analysis;
     const preserve =
       old.base === base && old.resetToken === resetToken && old.model;
     const v = preserve
@@ -442,15 +444,14 @@ export function RCLab({
       origin: v,
       time: 0,
     };
-    setAnalysis(next);
     setOrigin(v);
     setTime(0);
     setCursor(null);
     setGraded(false);
     setAnswers(["", "", ""]);
     if (!next.model) setRunning(false);
-  }, [signature, base, c, resetToken]);
-  previous.current.model = analysis.model;
+  }, [signature, base, c, resetToken, analysis]);
+  // Keep the previous model until the transition effect samples its final state.
   previous.current.origin = origin;
   previous.current.time = time;
   useEffect(() => {
@@ -867,7 +868,8 @@ function RCContext({
   } else {
     const p = c.parts.find((p) => p.id === inspection.id);
     if (p) {
-      const value = reading(p, frame.result)!;
+      const value = reading(p, frame.result);
+      if (!value) return null;
       tex = ["resistor", "lamp", "ammeter"].includes(p.kind)
         ? `${linked(s.part(p.id, "V"))}=${ref(p.currentRef) * ref(p.voltageRef) < 0 ? "-" : ""}${linked(s.part(p.id, "R"))}${linked(s.part(p.id))}=${num(value.voltage)}\\,\\mathrm{V}`
         : p.kind === "capacitor"
